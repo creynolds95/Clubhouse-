@@ -16,13 +16,22 @@ const GCA = 'https://api.golfcourseapi.com/v1'
 
 const reach = (name: string) => (e: unknown) => { throw new Error(`${name} isn't responding right now. Try again in a minute.`) }
 
+const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
+
+/** Tries each public Overpass server in turn; any one answering is enough. */
 async function overpass(query: string) {
-  const res = await fetch('https://overpass-api.de/api/interpreter', {
-    method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}`,
-    signal: AbortSignal.timeout(25_000),
-  }).catch(reach('OpenStreetMap'))
-  if (!res.ok) throw new Error(`OpenStreetMap lookup failed (${res.status})`)
-  return (await res.json<{ elements: never[] }>()).elements
+  let last = 'OpenStreetMap lookup failed'
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, {
+        method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}`,
+        signal: AbortSignal.timeout(12_000),
+      })
+      if (res.ok) return (await res.json<{ elements: never[] }>()).elements
+      last = `OpenStreetMap lookup failed (${res.status})`
+    } catch { last = "OpenStreetMap isn't responding right now. Try again in a minute." }
+  }
+  throw new Error(last)
 }
 
 const gca = async (env: CourseEnv, path: string) => {
