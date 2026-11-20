@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 140" role="img" aria-label="Clubhouse crest">
+  <path d="M60 4 L112 18 V64 C112 98 90 122 60 136 C30 122 8 98 8 64 V18 Z" fill="#1f3a2c" stroke="#b5945b" stroke-width="4"/>
+  <path d="M60 14 L103 25.5 V64 C103 92 85 112 60 125 C35 112 17 92 17 64 V25.5 Z" fill="none" stroke="#b5945b" stroke-width="1.2" opacity=".7"/>
+  <!-- crossed clubs -->
+  <g stroke="#efe8d8" stroke-width="3.2" stroke-linecap="round">
+    <line x1="36" y1="38" x2="80" y2="100"/>
+    <line x1="84" y1="38" x2="40" y2="100"/>
+  </g>
+  <g fill="#efe8d8">
+    <path d="M78 98 l9 3 -2 6 -11 -4 z"/>
+    <path d="M42 98 l-9 3 2 6 11 -4 z"/>
+  </g>
+  <!-- flag -->
+  <line x1="60" y1="30" x2="60" y2="72" stroke="#b5945b" stroke-width="2.4"/>
+  <path d="M61 31 L78 37 L61 43 Z" fill="#9a4a3a"/>
+  <!-- ball -->
+  <circle cx="60" cy="84" r="6" fill="#efe8d8" stroke="#1f3a2c" stroke-width="1.2"/>
+</svg>
