@@ -118,6 +118,10 @@ export default function Play() {
       )}
       <div className="field"><span className="label">Green in regulation{h.gir == null && girAuto != null ? ' (worked out)' : ''}</span>
         <div className="chips">{([[true, 'Yes'], [false, 'No']] as const).map(([v, l]) => <button key={l} className="chip" style={{ flex: 1, minHeight: 52 }} aria-pressed={gir === v} onClick={() => set({ gir: h.gir === v ? undefined : v })}>{l}</button>)}</div></div>
+      {gir === false && (
+        <div className="field"><span className="label">Up and down?</span>
+          <div className="chips">{([[true, 'Made it'], [false, 'No']] as const).map(([v, l]) => <button key={l} className="chip" style={{ flex: 1, minHeight: 52 }} aria-pressed={h.upDown === v} onClick={() => set({ upDown: h.upDown === v ? undefined : v })}>{l}</button>)}</div></div>
+      )}
       <Stepper label="Penalties" value={h.penalties} onChange={(n) => set({ penalties: n })} max={6} empty="0" />
       <div className="field"><span className="label">Score · tap to save and move on</span>
         <div className="chips">

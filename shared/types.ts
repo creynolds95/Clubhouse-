@@ -55,6 +55,8 @@ export interface HoleScore {
   fairway?: 'hit' | 'left' | 'right' | 'na'
   gir?: boolean
   penalties?: number
+  /** Only asked when the green was missed: did you get up and down? */
+  upDown?: boolean
 }
 
 export interface Round {
