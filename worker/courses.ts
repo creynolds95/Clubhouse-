@@ -168,24 +168,7 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
     cs.push(...found.filter(matches))
     await remember(env, found)
   } catch (e) { info.push(`OpenGolfAPI: ${(e as Error).message}`) }
-  // GolfCourseAPI's free tier is about 35 requests a day, so it is asked only when the free sources found little.
-  if (cs.length >= 3) info.push('GolfCourseAPI: skipped, enough results already')
-  else if (!env.GOLF_COURSE_API_KEY) info.push('GolfCourseAPI: no key set on the Worker')
-  else {
-    const search = (term: string) => cached(env, `q:${term.toLowerCase()}`, 7, async () =>
-      gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(term)}`)) as { courses?: never[] }).courses ?? []), 1)
-    try {
-      let found = await search(safe)
-      if (!found.length && tokens.length > 1) {
-        // Their search wants whole words. Try the longest word alone and keep only what matches everything typed.
-        const anchor = [...tokens].sort((a, b) => b.length - a.length)[0]
-        if (anchor.length >= 3) found = (await search(anchor)).filter(matches)
-      }
-      info.push(`GolfCourseAPI: ${found.length}`)
-      cs.push(...found)
-      await remember(env, found)
-    } catch (e) { const m = (e as Error).message; info.push(m.includes('429') ? 'GolfCourseAPI: daily limit reached' : m) }
-  }
+  info.push('GolfCourseAPI: asked only when you pick a course')
   if (cs.length < 3) {
     try {
       const found = await cached(env, `nq:${safe.toLowerCase()}`, 7, () => nominatim(`${safe} golf`, at ?? { lat: 32.78, lon: -96.8 }, 80), 1)
@@ -217,22 +200,33 @@ export async function geocode(env: CourseEnv, q: string) {
 
 export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<Course> {
   let refs = [{ source: c.source, externalId: c.externalId }, ...(c.alts ?? [])]
-  if (refs.length === 1) {
-    // Saved or hand-picked on its own: look for the same course in the other sources by name.
-    const term = encodeURIComponent(c.name.replace(/[^\w ]/g, ' ').replace(/\s+/g, ' ').trim())
-    const [g, o] = await Promise.all([
-      c.source !== 'golfcourseapi' && env.GOLF_COURSE_API_KEY ? gca(env, `/search?search_query=${term}`).then((r) => gcaCandidates(((r as { courses?: never[] }).courses ?? []))).catch(() => []) : [],
-      c.source !== 'opengolf' ? og([`/v1/courses/search?q=${term}&limit=10`]).then((r) => ogCandidates(ogRows(r))).catch(() => []) : [],
-    ])
-    const merged = mergeCandidates([c, ...g, ...o]).find((m) => m.tags?.includes(c.source) && [m, ...(m.alts ?? [])].some((x) => x.source === c.source && x.externalId === c.externalId))
-    if (merged) refs = [{ source: merged.source, externalId: merged.externalId }, ...(merged.alts ?? [])]
-  }
   // A saved course is reused only once its pars are verified. Unverified ones (pars set to 4) are re-fetched below.
-  let stale: Row | null = null
-  for (const r of refs) {
-    const existing = await env.DB.prepare('SELECT * FROM courses WHERE source = ? AND external_id = ?').bind(r.source, r.externalId).first<Row>()
-    if (existing && !existing.unverified) return toCourse(existing)
-    if (existing) stale ??= existing
+  const st: { row: Row | null } = { row: null }
+  const lookSaved = async () => {
+    for (const r of refs) {
+      const existing = await env.DB.prepare('SELECT * FROM courses WHERE source = ? AND external_id = ?').bind(r.source, r.externalId).first<Row>()
+      if (existing && !existing.unverified) return toCourse(existing)
+      if (existing) st.row ??= existing
+    }
+    return null
+  }
+  const saved = await lookSaved()
+  if (saved) return saved
+
+  // Picking a course is the only time GolfCourseAPI is asked: find the same course there (and in OpenGolf) by name.
+  const needGca = !!env.GOLF_COURSE_API_KEY && !refs.some((r) => r.source === 'golfcourseapi')
+  const needOg = !refs.some((r) => r.source === 'opengolf')
+  if (needGca || needOg) {
+    const term = c.name.replace(/[^\w ]/g, ' ').replace(/\s+/g, ' ').trim()
+    const [g, o] = await Promise.all([
+      needGca ? cached(env, `q:${term.toLowerCase()}`, 7, async () => gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(term)}`)) as { courses?: never[] }).courses ?? []), 1).catch(() => []) : [],
+      needOg ? og([`/v1/courses/search?q=${encodeURIComponent(term)}&limit=10`]).then((r) => ogCandidates(ogRows(r))).catch(() => []) : [],
+    ])
+    const own = { ...c, alts: c.alts ?? [] }
+    const merged = mergeCandidates([own, ...g, ...o]).find((m) => [m, ...(m.alts ?? [])].some((x) => x.source === c.source && x.externalId === c.externalId))
+    if (merged) refs = [{ source: merged.source, externalId: merged.externalId }, ...(merged.alts ?? [])]
+    const again = await lookSaved()
+    if (again) return again
   }
 
   let holes: Course['holes'] = [], tees: Course['tees'] = [], complete = false, from = c.source
@@ -274,6 +268,7 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
   const n = complete && holes.length === 9 ? 9 : 18 // 18 unless a source confirms a full 9-hole card
   const byHole = new Map(holes.map((h) => [h.hole, h]))
   const filled = Array.from({ length: n }, (_, i) => byHole.get(i + 1) ?? { hole: i + 1, par: 4 })
+  const stale = st.row
   if (stale) {
     // Re-fetch of an unverified save: replace its card only if we now have a complete one.
     if (!complete) return toCourse(stale)
