@@ -16,6 +16,26 @@ export function osmCandidates(elements: OsmEl[]): CourseCandidate[] {
     }))
 }
 
+type NomRow = { osm_type?: string; osm_id?: number; lat?: string; lon?: string; name?: string; category?: string; class?: string; type?: string; address?: Record<string, string> }
+
+/** Nominatim search rows (format=jsonv2, addressdetails=1) that are golf courses. Same id format as Overpass, e.g. "way/123". */
+export function nomCandidates(rows: NomRow[]): CourseCandidate[] {
+  return rows
+    .filter((r) => r.name && r.osm_type && r.osm_id && (r.type === 'golf_course' || (r.category ?? r.class) === 'leisure'))
+    .map((r) => {
+      const a = r.address ?? {}
+      const lat = Number(r.lat), lon = Number(r.lon)
+      return {
+        source: 'osm' as const,
+        externalId: `${r.osm_type}/${r.osm_id}`,
+        name: r.name!,
+        city: a.city ?? a.town ?? a.village ?? a.suburb ?? null,
+        state: a['ISO3166-2-lvl4']?.replace(/^US-/, '') ?? a.state ?? null,
+        ...(Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : {}),
+      }
+    })
+}
+
 /** Hole ways carry ref (number), par and handicap tags where a mapper added them. Duplicated refs (27-hole sites) keep the first. */
 export function osmHoles(elements: OsmEl[]): { holes: CourseHole[]; complete: boolean } {
   const seen = new Map<number, CourseHole>()
