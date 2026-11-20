@@ -39,7 +39,10 @@ export const api = {
   deleteR10Session: (date: string) => req<void>(`/r10/sessions/${date}`, { method: 'DELETE' }),
   courses: (q = '') => req<Course[]>(`/courses?q=${encodeURIComponent(q)}`),
   courseSources: () => req<{ osm: boolean; golfcourseapi: boolean }>('/courses/sources'),
-  findCourses: (q: string) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/find?q=${encodeURIComponent(q)}`),
+  findCourses: (q: string, at?: { lat: number; lon: number }) =>
+    req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/find?q=${encodeURIComponent(q)}${at ? `&lat=${at.lat}&lon=${at.lon}` : ''}`),
+  nearCourses: (at: { lat: number; lon: number }) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/near?lat=${at.lat}&lon=${at.lon}`),
+  geocode: (q: string) => req<{ label: string; lat: number; lon: number }>(`/courses/geocode?q=${encodeURIComponent(q)}`),
   importCourse: (c: CourseCandidate) => req<Course>('/courses/import', json('POST', c)),
   saveCourse: (c: Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'> & { id?: string }) =>
     c.id ? req<void>(`/courses/${c.id}`, json('PUT', c)).then(() => c.id!) : req<{ id: string }>('/courses', json('POST', c)).then((r) => r.id),

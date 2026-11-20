@@ -12,6 +12,7 @@ export function osmCandidates(elements: OsmEl[]): CourseCandidate[] {
       name: e.tags!.name,
       city: e.tags!['addr:city'] ?? null,
       state: e.tags!['addr:state'] ?? null,
+      ...(e.center ? { lat: e.center.lat, lon: e.center.lon } : {}),
     }))
 }
 
@@ -34,7 +35,7 @@ export function osmHoles(elements: OsmEl[]): { holes: CourseHole[]; complete: bo
 // tee_name, course_rating, slope_rating, total_yards and holes[{par, yardage, handicap}].
 // Field names are matched tolerantly because the docs page could not be fully read.
 type GcaTee = { tee_name?: string; course_rating?: number; slope_rating?: number; total_yards?: number; holes?: { par?: number; yardage?: number; handicap?: number }[] }
-type GcaCourse = { id?: number | string; club_name?: string; course_name?: string; location?: { city?: string; state?: string }; tees?: Record<string, GcaTee[]> | GcaTee[] }
+type GcaCourse = { id?: number | string; club_name?: string; course_name?: string; location?: { city?: string; state?: string; latitude?: number; longitude?: number }; tees?: Record<string, GcaTee[]> | GcaTee[] }
 
 export function gcaCandidates(courses: GcaCourse[]): CourseCandidate[] {
   return courses.filter((c) => c.id != null).map((c) => ({
@@ -43,6 +44,7 @@ export function gcaCandidates(courses: GcaCourse[]): CourseCandidate[] {
     name: [c.club_name, c.course_name && c.course_name !== c.club_name ? c.course_name : null].filter(Boolean).join(' · ') || 'Course',
     city: c.location?.city ?? null,
     state: c.location?.state ?? null,
+    ...(typeof c.location?.latitude === 'number' && typeof c.location?.longitude === 'number' ? { lat: c.location.latitude, lon: c.location.longitude } : {}),
   }))
 }
 
@@ -60,3 +62,13 @@ export function gcaCourse(c: GcaCourse): { holes: CourseHole[]; tees: CourseTee[
   const unique = tees.filter((t) => (seen.has(t.name) ? false : seen.add(t.name)))
   return { holes, tees: unique, complete: holes.length === 9 || holes.length === 18 }
 }
+
+/** Great-circle distance in km. */
+export function distKm(aLat: number, aLon: number, bLat: number, bLon: number) {
+  const r = Math.PI / 180, dLat = (bLat - aLat) * r, dLon = (bLon - aLon) * r
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * r) * Math.cos(bLat * r) * Math.sin(dLon / 2) ** 2
+  return 12742 * Math.asin(Math.sqrt(h))
+}
+
+/** Lowercase, drop punctuation and filler words so "Pecan Hollow Golf Course" matches "Pecan Hollow". */
+export const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(golf|course|club|country|the|and|at)\b/g, ' ').replace(/\s+/g, ' ').trim()
