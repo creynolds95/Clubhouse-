@@ -238,7 +238,7 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
   }
   c = { ...c, source: from, externalId: refs.find((r) => r.source === from)?.externalId ?? c.externalId }
   // Fill any missing holes with par 4 so the course is usable; it is flagged so the pars get checked.
-  const n = holes.length > 9 ? 18 : 9
+  const n = complete && holes.length === 9 ? 9 : 18 // 18 unless a source confirms a full 9-hole card
   const byHole = new Map(holes.map((h) => [h.hole, h]))
   const filled = Array.from({ length: n }, (_, i) => byHole.get(i + 1) ?? { hole: i + 1, par: 4 })
   const course: Course = { id: crypto.randomUUID(), name: c.name, city: c.city, state: c.state, source: c.source, holes: filled, tees, unverified: !complete }
