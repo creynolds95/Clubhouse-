@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import { backFrom, useHeader } from '../components/Shell'
 import { Sheet } from '../components/Sheet'
-import { api, shortDate } from '../lib/api'
+import { api, frameSrc, shortDate } from '../lib/api'
 import { useData } from '../lib/useData'
 import { useSettings } from '../lib/settings'
 import { analyzeStored } from '../lib/upload'
@@ -91,7 +91,7 @@ export default function SwingDetail() {
             {PHASES.filter((p) => s.frames.includes(p)).map((p) => (
               <figure key={p}>
                 <div style={{ position: 'relative' }}>
-                  <img src={`/api/swings/${s.id}/frames/${p}`} alt={p} loading="lazy" />
+                  <img src={frameSrc(s, p)} alt={p} loading="lazy" />
                   {tracking && m?.pose?.[p] && <Skeleton pts={m.pose[p]!} />}
                 </div>
                 <figcaption>{p}</figcaption>

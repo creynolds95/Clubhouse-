@@ -4,7 +4,9 @@ import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
 import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate, Profile } from '../shared/types'
-import { bumpRequests, purgeExpired, setRetentionDays, usageReport } from './maintenance'
+import { bumpRequests, purgeExpired, r2HasRoom, setRetentionDays, usageReport } from './maintenance'
+import { logReport } from './outbound'
+import { GCA_BUDGET, gcaUsedToday } from './courses'
 
 type Env = AiEnv & CourseEnv & { DB: D1Database; MEDIA: R2Bucket; ASSETS: Fetcher }
 const app = new Hono<{ Bindings: Env }>().basePath('/api')
@@ -12,8 +14,8 @@ const app = new Hono<{ Bindings: Env }>().basePath('/api')
 // Count API requests per day for the usage readout (static files are free and not counted).
 app.use('*', async (c, next) => { c.executionCtx.waitUntil(bumpRequests(c.env).catch(() => {})); await next() })
 
-// Auth: Cloudflare Access sits in front of the whole hostname (single user).
-// Nothing reaches this Worker without a valid Access session.
+// Auth: meant to sit behind Cloudflare Access (single user). Until Access is turned on the API is public,
+// so uploads are size-capped and refused when storage nears the free limit.
 
 const MAX_VIDEO_BYTES = 95 * 1024 * 1024 // Workers free plan request body cap is 100 MB
 const MAX_FRAME_BYTES = 2 * 1024 * 1024
@@ -28,6 +30,8 @@ const toSwing = (r: SwingRow): Swing => ({
   metrics: r.metrics ? JSON.parse(r.metrics) : null, feedback: r.feedback, r10ShotId: r.r10_shot_id,
 })
 const isPhase = (p: string): p is SwingPhase => (PHASES as string[]).includes(p)
+const swingExists = async (env: Env, id: string) => !!(await env.DB.prepare('SELECT 1 FROM swings WHERE id = ?').bind(id).first())
+const FULL = 'File storage is nearly at the free limit. Clean up old videos in Settings first.'
 
 app.get('/health', (c) => c.json({ ok: true }))
 
@@ -66,6 +70,8 @@ app.put('/swings/:id/video', async (c) => {
   const id = c.req.param('id')
   const len = Number(c.req.header('content-length') ?? 0)
   if (!len || len > MAX_VIDEO_BYTES) return c.json({ error: 'Video must be under 95 MB' }, 413)
+  if (!(await swingExists(c.env, id))) return c.json({ error: 'Swing not found' }, 404)
+  if (!(await r2HasRoom(c.env, len))) return c.json({ error: FULL }, 507)
   const key = `swings/${id}/video`
   await c.env.MEDIA.put(key, c.req.raw.body!, { httpMetadata: { contentType: c.req.header('content-type') ?? 'video/mp4' } })
   await c.env.DB.prepare('UPDATE swings SET video_key = ? WHERE id = ?').bind(key, id).run()
@@ -76,7 +82,8 @@ app.put('/swings/:id/frames/:phase', async (c) => {
   const { id, phase } = c.req.param()
   if (!isPhase(phase)) return c.json({ error: 'Unknown phase' }, 400)
   const buf = await c.req.arrayBuffer()
-  if (buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'Frame too large' }, 413)
+  if (!buf.byteLength || buf.byteLength > MAX_FRAME_BYTES) return c.json({ error: 'Frame is empty or too large' }, 413)
+  if (!(await swingExists(c.env, id))) return c.json({ error: 'Swing not found' }, 404)
   await c.env.MEDIA.put(`swings/${id}/frames/${phase}.jpg`, buf, { httpMetadata: { contentType: 'image/jpeg' } })
   await c.env.DB.prepare(
     `UPDATE swings SET frames = (SELECT json_group_array(value) FROM (SELECT DISTINCT value FROM json_each(json_insert(frames, '$[#]', ?)))) WHERE id = ?`,
@@ -90,7 +97,7 @@ app.put('/swings/:id/metrics', async (c) => {
   return c.body(null, 204)
 })
 
-// Media is immutable once written, so it can be cached hard on the device.
+// Cached hard on the device. Frames are rewritten by "Read swing again", so the app adds ?v=<version> to their URLs.
 const serveMedia = async (c: { env: Env }, key: string, range?: string) => {
   const obj = await c.env.MEDIA.get(key, range ? { range: parseRange(range) } : undefined)
   if (!obj) return new Response('Not found', { status: 404 })
@@ -98,9 +105,10 @@ const serveMedia = async (c: { env: Env }, key: string, range?: string) => {
   obj.writeHttpMetadata(h)
   h.set('cache-control', 'private, max-age=31536000, immutable')
   h.set('accept-ranges', 'bytes')
-  if (range && obj.range && 'offset' in obj.range) {
-    const start = obj.range.offset ?? 0
-    const end = start + (obj.range.length ?? obj.size) - 1
+  if (range && obj.range) {
+    const r = obj.range as { offset?: number; length?: number; suffix?: number }
+    const start = r.suffix != null ? Math.max(0, obj.size - r.suffix) : r.offset ?? 0
+    const end = r.suffix != null ? obj.size - 1 : Math.min(obj.size, start + (r.length ?? obj.size - start)) - 1
     h.set('content-range', `bytes ${start}-${end}/${obj.size}`)
     return new Response(obj.body, { status: 206, headers: h })
   }
@@ -149,7 +157,9 @@ app.post('/rounds', async (c) => {
   await c.env.DB.prepare(
     'INSERT INTO rounds (id, played_on, course, tees, holes, total, source, external_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON CONFLICT(external_id) DO NOTHING',
   ).bind(id, r.playedOn, r.course, r.tees ?? null, JSON.stringify(r.holes), total, r.source ?? 'manual', r.externalId ?? null).run()
-  return c.json({ id, total }, 201)
+  // A resend of a round already saved (offline outbox) returns the id it was saved under.
+  const saved = r.externalId ? await c.env.DB.prepare('SELECT id FROM rounds WHERE external_id = ?').bind(r.externalId).first<{ id: string }>() : null
+  return c.json({ id: saved?.id ?? id, total }, 201)
 })
 
 app.delete('/rounds/:id', async (c) => {
@@ -164,6 +174,7 @@ app.post('/imports', async (c) => {
   const name = (c.req.query('name') ?? 'upload').replace(/[^\w.\- ]/g, '_').slice(0, 120)
   const len = Number(c.req.header('content-length') ?? 0)
   if (!len || len > MAX_IMPORT_BYTES) return c.json({ error: 'File must be under 50 MB' }, 413)
+  if (!(await r2HasRoom(c.env, len))) return c.json({ error: FULL }, 507)
   const id = crypto.randomUUID()
   const key = `imports/${id}/${name}`
   await c.env.MEDIA.put(key, c.req.raw.body!, { httpMetadata: { contentType: c.req.header('content-type') ?? 'application/octet-stream' } })
@@ -265,6 +276,8 @@ const cardKey = (id: string, tee: string) => `scorecards/${id}/${(tee || 'card')
 app.put('/courses/:id/scorecard', async (c) => {
   const buf = await c.req.arrayBuffer()
   if (!buf.byteLength || buf.byteLength > 8_000_000) return c.json({ error: 'Photo is empty or over 8 MB' }, 400)
+  if (!(await c.env.DB.prepare('SELECT 1 FROM courses WHERE id = ?').bind(c.req.param('id')).first())) return c.json({ error: 'Course not found' }, 404)
+  if (!(await r2HasRoom(c.env, buf.byteLength))) return c.json({ error: FULL }, 507)
   await c.env.MEDIA.put(cardKey(c.req.param('id'), c.req.query('tee') ?? ''), buf, { httpMetadata: { contentType: 'image/jpeg' } })
   return c.body(null, 204)
 })
@@ -277,7 +290,13 @@ app.post('/courses/:id/scorecard/read', (c) => {
   if (!aiStatus(c.env).enabled) return c.json({ error: 'Reading a scorecard photo turns on with the AI coach. Enter the numbers by hand for now.' }, 503)
   return c.json({ error: 'Not implemented' }, 501)
 })
-app.delete('/courses/:id', async (c) => { await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(c.req.param('id')).run(); return c.body(null, 204) })
+app.delete('/courses/:id', async (c) => {
+  const id = c.req.param('id')
+  const photos = await c.env.MEDIA.list({ prefix: `scorecards/${id}/` })
+  if (photos.objects.length) await c.env.MEDIA.delete(photos.objects.map((o) => o.key))
+  await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(id).run()
+  return c.body(null, 204)
+})
 
 // ---- Retention + usage ----
 app.get('/usage', async (c) => c.json(await usageReport(c.env)))
@@ -288,6 +307,12 @@ app.put('/settings/retention', async (c) => {
   return c.body(null, 204)
 })
 app.post('/maintenance/purge', async (c) => c.json(await purgeExpired(c.env)))
+
+// ---- Outside services: every outbound call, cache hit and skipped call ----
+app.get('/log', async (c) => c.json({
+  ...(await logReport(c.env, Number(c.req.query('limit')) || 150)),
+  golfCourseApi: { usedToday: await gcaUsedToday(c.env), budget: GCA_BUDGET, keySet: !!c.env.GOLF_COURSE_API_KEY },
+}))
 
 // ---- Player profile (plain JSON in app_settings; read by the coach) ----
 const num = (v: unknown, min: number, max: number) => { const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : undefined }

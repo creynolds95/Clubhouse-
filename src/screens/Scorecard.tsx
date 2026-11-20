@@ -38,7 +38,8 @@ export default function Scorecard() {
     setRows(c.holes.map((h, i) => ({ hole: h.hole, par: h.par, hcp: h.hcp, yds: t?.yards?.[i] || undefined })))
   }
   useEffect(() => { if (course && !tee) { const first = course.tees[0]?.name ?? ''; setTee(first); load(course, first) } }, [course]) // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => { if (course && tee) { setPhoto(`/api/courses/${course.id}/scorecard?tee=${encodeURIComponent(tee)}&t=${Date.now()}`) } }, [course?.id, tee]) // eslint-disable-line react-hooks/exhaustive-deps
+  // Plain URL so the browser cache (1 hour) is used; a new upload below adds a cache-buster.
+  useEffect(() => { if (course && tee) { setPhoto(`/api/courses/${course.id}/scorecard?tee=${encodeURIComponent(tee)}`) } }, [course?.id, tee]) // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!course) return (
     <>

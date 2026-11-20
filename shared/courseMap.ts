@@ -3,19 +3,6 @@ import type { CourseCandidate, CourseHole, CourseTee } from './types'
 
 type OsmEl = { type: string; id: number; tags?: Record<string, string>; center?: { lat: number; lon: number } }
 
-export function osmCandidates(elements: OsmEl[]): CourseCandidate[] {
-  return elements
-    .filter((e) => e.tags?.name)
-    .map((e) => ({
-      source: 'osm' as const,
-      externalId: `${e.type}/${e.id}`,
-      name: e.tags!.name,
-      city: e.tags!['addr:city'] ?? null,
-      state: e.tags!['addr:state'] ?? null,
-      ...(e.center ? { lat: e.center.lat, lon: e.center.lon } : {}),
-    }))
-}
-
 type NomRow = { osm_type?: string; osm_id?: number; lat?: string; lon?: string; name?: string; category?: string; class?: string; type?: string; address?: Record<string, string> }
 
 /** Nominatim search rows (format=jsonv2, addressdetails=1) that are golf courses. Same id format as Overpass, e.g. "way/123". */

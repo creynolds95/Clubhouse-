@@ -20,6 +20,7 @@ import Distances from './screens/Distances'
 import Warmup from './screens/Warmup'
 import Scorecard from './screens/Scorecard'
 import RoundSummary from './screens/RoundSummary'
+import ApiLog from './screens/ApiLog'
 
 export default function App() {
   // Send any round saved offline as soon as there is a connection again.
@@ -51,6 +52,7 @@ export default function App() {
         <Route path="/clubs" element={<Clubs />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
+        <Route path="/settings/log" element={<ApiLog />} />
         <Route path="*" element={<div className="empty"><div className="t">Page not found.</div></div>} />
       </Routes>
     </Shell>
