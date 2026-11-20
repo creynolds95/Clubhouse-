@@ -12,6 +12,7 @@ export const TABS = [
 export const MENU = [
   { to: '/stats', label: 'Stats', icon: 'stats' },
   { to: '/r10', label: 'R10 sessions', icon: 'r10' },
+  { to: '/import', label: 'Import', icon: 'plus' },
   { to: '/settings', label: 'Settings', icon: 'settings' },
 ]
 
@@ -146,6 +147,7 @@ function Floater() {
     <div className="floater" role="status" aria-live="polite" onClick={() => f.error && floater.set(null)}>
       <div className="top">
         <span style={{ flex: 1 }}>{f.text}</span>
+        {f.action && <button className="btn" style={{ minHeight: 36, background: 'transparent', color: 'inherit', borderColor: 'rgba(239,232,216,.4)' }} onClick={() => { floater.set(null); f.action!.run() }}>{f.action.label}</button>}
         {!f.busy && <button className="iconbtn" aria-label="Dismiss" onClick={() => floater.set(null)}><Icon name="close" size={18} /></button>}
       </div>
       {f.busy && <div className="bar"><i style={{ width: `${Math.round((f.progress ?? 0) * 100)}%` }} /></div>}

@@ -1,5 +1,5 @@
 import { Hono } from 'hono'
-import type { Round, Swing, SwingPhase } from '../shared/types'
+import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
 
@@ -136,6 +136,58 @@ app.post('/rounds', async (c) => {
 
 app.delete('/rounds/:id', async (c) => {
   await c.env.DB.prepare('DELETE FROM rounds WHERE id = ?').bind(c.req.param('id')).run()
+  return c.body(null, 204)
+})
+
+// ---- Imports (raw files are always kept in R2 so parsers can be rerun later) ----
+const MAX_IMPORT_BYTES = 50 * 1024 * 1024
+app.post('/imports', async (c) => {
+  const kind = c.req.query('kind') ?? 'other'
+  const name = (c.req.query('name') ?? 'upload').replace(/[^\w.\- ]/g, '_').slice(0, 120)
+  const len = Number(c.req.header('content-length') ?? 0)
+  if (!len || len > MAX_IMPORT_BYTES) return c.json({ error: 'File must be under 50 MB' }, 413)
+  const id = crypto.randomUUID()
+  const key = `imports/${id}/${name}`
+  await c.env.MEDIA.put(key, c.req.raw.body!, { httpMetadata: { contentType: c.req.header('content-type') ?? 'application/octet-stream' } })
+  await c.env.DB.prepare('INSERT INTO imports (id, kind, filename, r2_key) VALUES (?, ?, ?, ?)').bind(id, kind, name, key).run()
+  return c.json({ id }, 201)
+})
+
+app.get('/imports', async (c) => {
+  const { results } = await c.env.DB.prepare('SELECT id, created_at, kind, filename, rows_imported FROM imports ORDER BY created_at DESC LIMIT 50').all()
+  return c.json(results)
+})
+
+// ---- R10 shots ----
+app.post('/r10/shots', async (c) => {
+  const { importId, shots } = await c.req.json<{ importId?: string; shots: R10Shot[] }>()
+  if (!Array.isArray(shots) || !shots.length) return c.json({ error: 'No shots to import' }, 400)
+  if (shots.length > 5000) return c.json({ error: 'Too many shots in one file' }, 413)
+  const stmt = c.env.DB.prepare(
+    'INSERT OR IGNORE INTO r10_shots (id, import_id, session_date, hit_at, club, metrics, dedupe_key) VALUES (?, ?, ?, ?, ?, ?, ?)',
+  )
+  const batch = shots.map((s) =>
+    stmt.bind(crypto.randomUUID(), importId ?? null, s.sessionDate, s.hitAt, s.club, JSON.stringify(s.m),
+      [s.hitAt ?? s.sessionDate, s.club ?? '', s.m.ballSpeed ?? '', s.m.clubSpeed ?? '', s.m.carry ?? ''].join('|')))
+  let added = 0
+  for (let i = 0; i < batch.length; i += 50) {
+    const res = await c.env.DB.batch(batch.slice(i, i + 50))
+    added += res.reduce((n, r) => n + (r.meta.changes ?? 0), 0)
+  }
+  if (importId) await c.env.DB.prepare('UPDATE imports SET rows_imported = ? WHERE id = ?').bind(added, importId).run()
+  return c.json({ added, duplicates: shots.length - added }, 201)
+})
+
+app.get('/r10/shots', async (c) => {
+  const { results } = await c.env.DB.prepare(
+    'SELECT id, session_date, hit_at, club, metrics FROM r10_shots ORDER BY session_date DESC, hit_at ASC LIMIT 5000',
+  ).all<{ id: string; session_date: string; hit_at: string | null; club: string | null; metrics: string }>()
+  const shots: R10Shot[] = results.map((r) => ({ id: r.id, sessionDate: r.session_date, hitAt: r.hit_at, club: r.club, m: JSON.parse(r.metrics) }))
+  return c.json(shots)
+})
+
+app.delete('/r10/sessions/:date', async (c) => {
+  await c.env.DB.prepare('DELETE FROM r10_shots WHERE session_date = ?').bind(c.req.param('date')).run()
   return c.body(null, 204)
 })
 

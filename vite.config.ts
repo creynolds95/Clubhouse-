@@ -32,11 +32,10 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         runtimeCaching: [
           {
-            // MediaPipe wasm + pose model: big, immutable, cache forever.
-            urlPattern: ({ url }) =>
-              url.hostname === 'cdn.jsdelivr.net' || url.hostname === 'storage.googleapis.com',
+            // MediaPipe wasm + pose model: big and immutable, so cache after first use.
+            urlPattern: ({ url }) => url.pathname.startsWith('/mediapipe/'),
             handler: 'CacheFirst',
-            options: { cacheName: 'pose-assets', expiration: { maxEntries: 20 } },
+            options: { cacheName: 'pose-assets', expiration: { maxEntries: 8 } },
           },
         ],
       },

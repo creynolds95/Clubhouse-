@@ -10,7 +10,9 @@
     "typecheck": "tsc -b",
     "db:migrate:local": "wrangler d1 migrations apply clubhouse --local",
     "db:migrate:remote": "wrangler d1 migrations apply clubhouse --remote",
-    "deploy": "npm run build && wrangler deploy"
+    "deploy": "npm run build && wrangler deploy",
+    "predev": "node scripts/copy-wasm.mjs",
+    "prebuild": "node scripts/copy-wasm.mjs"
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.2.3",

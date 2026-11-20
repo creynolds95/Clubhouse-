@@ -4,16 +4,35 @@ export const PHASES: SwingPhase[] = ['address', 'takeaway', 'top', 'transition',
 
 export interface SwingMetrics {
   handedness: 'right' | 'left'
+  view?: SwingView
   phaseTimes: Partial<Record<SwingPhase, number>> // seconds into clip
   tempoRatio?: number // backswing time / downswing time (tour avg ~3:1)
-  spineTiltDeg: Partial<Record<SwingPhase, number>>
-  shoulderTurnDeg: Partial<Record<SwingPhase, number>> // shoulder line vs address
-  hipTurnDeg: Partial<Record<SwingPhase, number>>
+
+  // Down-the-line (camera behind the golfer). Distances are % of torso length so they don't depend on camera distance.
+  spineAngleDeg?: Partial<Record<SwingPhase, number>> // forward lean of the torso from vertical
+  spineChangeDeg?: number // impact minus address; negative = stood up
+  earlyExtensionPct?: number // hips toward the ball, address to impact (negative = away)
+  headToTop?: { toward: number; down: number } // address to top
+  headToImpact?: { toward: number; down: number } // address to impact
   leadArmDeg?: number // elbow angle at top (180 = straight)
-  headSway?: { x: number; y: number } // address→impact, in shoulder-widths
+  handsAtTopPct?: number // hands above the shoulder line at the top (negative = below)
+  quality?: { bodyInFrame: boolean; visibility: number }
+  /** Tracked joints per position for the overlay: [x, y] pairs in 0..1, index order = POSE_POINTS. */
+  pose?: Partial<Record<SwingPhase, number[][]>>
+
+  // Older swings (before from-behind metrics)
+  spineTiltDeg?: Partial<Record<SwingPhase, number>>
+  shoulderTurnDeg?: Partial<Record<SwingPhase, number>>
+  hipTurnDeg?: Partial<Record<SwingPhase, number>>
+  headSway?: { x: number; y: number }
+
   framesWithPose: number
   framesSampled: number
 }
+
+/** MediaPipe landmark indices stored in `pose`, and the bones drawn between them (indices into this list). */
+export const POSE_POINTS = [0, 11, 12, 13, 14, 15, 16, 23, 24, 25, 26, 27, 28]
+export const POSE_BONES: [number, number][] = [[1, 2], [1, 3], [3, 5], [2, 4], [4, 6], [1, 7], [2, 8], [7, 8], [7, 9], [9, 11], [8, 10], [10, 12]]
 
 export interface Swing {
   id: string
@@ -46,4 +65,17 @@ export interface Round {
   holes: HoleScore[]
   total: number
   source: 'manual' | 'garmin_export' | 'garmin_sync'
+}
+
+/** Normalised launch-monitor metrics. Speeds in mph, distances in yards, angles in degrees, spin in rpm. */
+export type R10Metric =
+  | 'clubSpeed' | 'ballSpeed' | 'smash' | 'carry' | 'total' | 'attack' | 'path' | 'face' | 'faceToPath'
+  | 'launch' | 'launchDir' | 'spin' | 'spinAxis' | 'apex' | 'offline'
+
+export interface R10Shot {
+  id?: string
+  sessionDate: string // YYYY-MM-DD
+  hitAt: string | null
+  club: string | null
+  m: Partial<Record<R10Metric, number>>
 }
