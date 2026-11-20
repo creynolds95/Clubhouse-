@@ -1,4 +1,5 @@
 import { Link, useNavigate } from 'react-router-dom'
+import { loadPlay } from '../lib/play'
 import { useHeader } from '../components/Shell'
 import { Icon } from '../components/Icon'
 import { api, shortDate } from '../lib/api'
@@ -6,7 +7,7 @@ import { useData } from '../lib/useData'
 
 export default function Rounds() {
   const nav = useNavigate()
-  useHeader({ title: 'Rounds', right: <button className="iconbtn" aria-label="Log round" onClick={() => nav('/rounds/new?from=Rounds|/rounds')}><Icon name="plus" /></button> })
+  useHeader({ title: 'Rounds', right: <><button className="iconbtn" style={{ fontWeight: 600 }} onClick={() => nav('/play?from=Rounds|/rounds')}>{loadPlay() ? 'Resume' : 'Play'}</button><button className="iconbtn" aria-label="Log round" onClick={() => nav('/rounds/new?from=Rounds|/rounds')}><Icon name="plus" /></button></> })
   const { data, loading, error } = useData(api.rounds)
   if (loading && !data) return <>{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton" />)}</>
   return (

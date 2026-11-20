@@ -6,12 +6,15 @@ import { floater } from '../lib/floater'
 import { api } from '../lib/api'
 import { useData } from '../lib/useData'
 import { clubInsights, clubsInData, gapNote } from '../lib/clubInsights'
+import { clubNotes, gapNotes } from '../lib/clubNotes'
+import { NoteList } from '../components/NoteList'
 import { CLUB_CHOICES } from '../../shared/types'
 
 export default function Clubs() {
   useHeader({ title: 'Club insights' })
   const shots = useData(api.r10Shots), profile = useData(api.profile)
   const rows = useMemo(() => clubInsights(shots.data ?? []), [shots.data])
+  const notes = useMemo(() => [...clubNotes(shots.data ?? []), ...gapNotes(rows)].sort((a, b) => ({ caution: 0, use: 1, info: 2 }[a.tone] - { caution: 0, use: 1, info: 2 }[b.tone])), [shots.data, rows])
   const inData = useMemo(() => clubsInData(shots.data ?? []), [shots.data])
   const bag = profile.data?.clubs ?? []
   const missing = inData.filter((c) => !bag.includes(c))
@@ -33,7 +36,8 @@ export default function Clubs() {
         <div className="card"><div className="note">Your data has {missing.length} {missing.length === 1 ? 'club' : 'clubs'} not in your bag yet: {missing.join(', ')}.</div>
           <div style={{ padding: '0 16px 16px' }}><button className="btn block" onClick={addToBag}>Add to my bag</button></div></div>
       )}
-      <div className="label">Distance ladder</div>
+      {notes.length > 0 && <><div className="label">Notes</div><div className="card" style={{ marginTop: 8, paddingTop: 12 }}><NoteList notes={notes} showDrill /></div></>}
+      <div className="label" style={{ marginTop: 16 }}>Distance ladder</div>
       <div className="card" style={{ marginTop: 8 }}>
         {rows.map((r) => (
           <div key={r.club}>

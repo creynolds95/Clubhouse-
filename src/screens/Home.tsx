@@ -1,5 +1,9 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useActivePlay } from '../lib/play'
+import { clubNotes } from '../lib/clubNotes'
+import { NoteList } from '../components/NoteList'
 import { useHeader } from '../components/Shell'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
@@ -24,6 +28,11 @@ export default function Home() {
   const [custom, setCustom] = useState(false)
   useHeader({ title: 'Clubhouse', right: <button className="iconbtn" aria-label="Customize" onClick={() => setCustom(true)}><Icon name="sliders" /></button> })
   const s = useSettings()
+  const play = useActivePlay(), nav = useNavigate()
+  // Reopening the app mid-round lands straight on the current hole (once per launch, for rounds touched in the last 12 hours).
+  useEffect(() => {
+    if (play && Date.now() - play.updatedAt < 12 * 3600_000 && !sessionStorage.getItem('clubhouse.resumed')) { sessionStorage.setItem('clubhouse.resumed', '1'); nav('/play?from=Home|/') }
+  }, [play, nav])
   const swings = useData(api.swings), rounds = useData(api.rounds), shots = useData(api.r10Shots), ai = useData(api.aiStatus), usage = useData(api.usage)
   if ((swings.loading || rounds.loading || shots.loading) && !rounds.data && !swings.data) return <div className="skeleton" style={{ height: 280 }} />
 
@@ -91,6 +100,16 @@ export default function Home() {
   return (
     <>
       {usage.data?.warnings[0] && <Link to="/settings" className="note" style={{ display: 'block', color: 'var(--flag)', padding: '0 0 8px' }}>{usage.data.warnings[0]}</Link>}
+      {play ? (
+        <Link to="/play?from=Home|/" className="card" style={{ display: 'block', padding: '14px 16px', background: 'var(--fairway)', color: 'var(--on-brand)', marginBottom: 12 }}>
+          <div className="cap" style={{ color: 'var(--on-brand)' }}>ROUND IN PROGRESS</div>
+          <div style={{ fontSize: 20, fontWeight: 700 }}>{play.course.name} · Hole {play.idx + 1}</div>
+          <div>{play.holes.filter((h) => h.strokes > 0).reduce((a, h) => a + h.strokes, 0)} so far · Tap to resume</div>
+        </Link>
+      ) : (
+        <Link to="/play?from=Home|/" className="btn block" style={{ marginBottom: 12 }}>Play a round</Link>
+      )}
+      <NoteList notes={clubNotes(H).filter((n) => n.tone !== 'info' || n.id.startsWith('stale'))} limit={2} />
       <div className="dash">{order.filter((t) => !s.tilesOff.includes(t.id)).map((t) => tiles[t.id])}</div>
       {custom && (
         <Sheet title="Customize" onClose={() => setCustom(false)}>

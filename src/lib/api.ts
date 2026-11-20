@@ -31,7 +31,7 @@ export const api = {
   putMetrics: (id: string, m: SwingMetrics) => req<void>(`/swings/${id}/metrics`, json('PUT', m)),
   deleteSwing: (id: string) => req<void>(`/swings/${id}`, { method: 'DELETE' }),
   rounds: () => req<Round[]>('/rounds'),
-  createRound: (r: Omit<Round, 'id' | 'total'>) => req<{ id: string; total: number }>('/rounds', json('POST', r)),
+  createRound: (r: Omit<Round, 'id' | 'total'> & { externalId?: string }) => req<{ id: string; total: number }>('/rounds', json('POST', r)),
   deleteRound: (id: string) => req<void>(`/rounds/${id}`, { method: 'DELETE' }),
   uploadImport: (file: Blob, name: string, kind: string) =>
     req<{ id: string }>(`/imports?kind=${kind}&name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': (file as File).type || 'application/octet-stream' }, body: file }),
