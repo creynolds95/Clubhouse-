@@ -45,6 +45,8 @@ export interface Swing {
   frames: SwingPhase[]
   metrics: SwingMetrics | null
   feedback: string | null
+  /** The R10 shot this swing is tagged to, if any. */
+  r10ShotId: string | null
 }
 
 export interface HoleScore {
@@ -80,6 +82,8 @@ export interface R10Shot {
   hitAt: string | null
   club: string | null
   m: Partial<Record<R10Metric, number>>
+  /** A swing tagged to this shot, if any. */
+  swingId?: string
 }
 
 export interface CourseHole { hole: number; par: number; hcp?: number }

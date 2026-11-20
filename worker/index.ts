@@ -20,12 +20,12 @@ const MAX_FRAME_BYTES = 2 * 1024 * 1024
 
 type SwingRow = {
   id: string; created_at: string; taken_at: string | null; club: string | null; view: string | null
-  note: string | null; video_key: string | null; frames: string; metrics: string | null; feedback: string | null
+  note: string | null; video_key: string | null; frames: string; metrics: string | null; feedback: string | null; r10_shot_id: string | null
 }
 const toSwing = (r: SwingRow): Swing => ({
   id: r.id, createdAt: r.created_at, takenAt: r.taken_at, club: r.club, view: r.view as Swing['view'],
   note: r.note, hasVideo: !!r.video_key, frames: JSON.parse(r.frames),
-  metrics: r.metrics ? JSON.parse(r.metrics) : null, feedback: r.feedback,
+  metrics: r.metrics ? JSON.parse(r.metrics) : null, feedback: r.feedback, r10ShotId: r.r10_shot_id,
 })
 const isPhase = (p: string): p is SwingPhase => (PHASES as string[]).includes(p)
 
@@ -48,6 +48,18 @@ app.post('/swings', async (c) => {
   await c.env.DB.prepare('INSERT INTO swings (id, club, view, taken_at, note) VALUES (?, ?, ?, ?, ?)')
     .bind(id, body.club ?? null, body.view ?? null, body.takenAt ?? null, body.note ?? null).run()
   return c.json({ id }, 201)
+})
+
+// Tag a swing to an R10 shot (or clear the tag). One swing per shot.
+app.put('/swings/:id/link', async (c) => {
+  const { r10ShotId } = await c.req.json<{ r10ShotId: string | null }>()
+  if (r10ShotId) {
+    const shot = await c.env.DB.prepare('SELECT id FROM r10_shots WHERE id = ?').bind(r10ShotId).first()
+    if (!shot) return c.json({ error: 'Shot not found' }, 404)
+    await c.env.DB.prepare('UPDATE swings SET r10_shot_id = NULL WHERE r10_shot_id = ?').bind(r10ShotId).run()
+  }
+  await c.env.DB.prepare('UPDATE swings SET r10_shot_id = ? WHERE id = ?').bind(r10ShotId ?? null, c.req.param('id')).run()
+  return c.body(null, 204)
 })
 
 app.put('/swings/:id/video', async (c) => {
@@ -186,9 +198,9 @@ app.post('/r10/shots', async (c) => {
 
 app.get('/r10/shots', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, session_date, hit_at, club, metrics FROM r10_shots ORDER BY session_date DESC, hit_at ASC LIMIT 5000',
-  ).all<{ id: string; session_date: string; hit_at: string | null; club: string | null; metrics: string }>()
-  const shots: R10Shot[] = results.map((r) => ({ id: r.id, sessionDate: r.session_date, hitAt: r.hit_at, club: r.club, m: JSON.parse(r.metrics) }))
+    'SELECT id, session_date, hit_at, club, metrics, (SELECT w.id FROM swings w WHERE w.r10_shot_id = r10_shots.id LIMIT 1) AS swing_id FROM r10_shots ORDER BY session_date DESC, hit_at ASC LIMIT 5000',
+  ).all<{ id: string; session_date: string; hit_at: string | null; club: string | null; metrics: string; swing_id: string | null }>()
+  const shots: R10Shot[] = results.map((r) => ({ id: r.id, sessionDate: r.session_date, hitAt: r.hit_at, club: r.club, m: JSON.parse(r.metrics), ...(r.swing_id ? { swingId: r.swing_id } : {}) }))
   return c.json(shots)
 })
 
