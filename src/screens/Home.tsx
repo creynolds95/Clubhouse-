@@ -2,9 +2,7 @@ import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useActivePlay } from '../lib/play'
-import { clubNotes } from '../lib/clubNotes'
 import { clubGroup } from '../lib/clubInsights'
-import { NoteList } from '../components/NoteList'
 import { useHeader } from '../components/Shell'
 import { Icon } from '../components/Icon'
 import { Sheet } from '../components/Sheet'
@@ -108,9 +106,8 @@ export default function Home() {
           <div>{play.holes.filter((h) => h.strokes > 0).reduce((a, h) => a + h.strokes, 0)} so far · Tap to resume</div>
         </Link>
       ) : (
-        <Link to="/play?from=Home|/" className="btn block" style={{ marginBottom: 12 }}>Play a round</Link>
+        <Link to="/play?from=Home|/" className="btn block play" style={{ marginBottom: 12 }}>Play a round</Link>
       )}
-      <NoteList notes={clubNotes(H).filter((n) => n.tone === 'caution' || n.id.startsWith('stale'))} limit={2} />
       <div className="dash">{order.filter((t) => !s.tilesOff.includes(t.id)).map((t) => tiles[t.id])}</div>
       {custom && (
         <Sheet title="Customize" onClose={() => setCustom(false)}>

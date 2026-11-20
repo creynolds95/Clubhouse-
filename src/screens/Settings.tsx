@@ -31,7 +31,7 @@ export default function Settings() {
       <div className="card">
         <h2>Appearance</h2>
         <div className="field">{choice(s.theme, [['system', 'System'], ['light', 'Light'], ['dark', 'Dark']], (v) => updateSettings({ theme: v }))}</div>
-        <div className="field"><span className="label">Look</span>{choice(s.look, [['classic', 'Classic'], ['sand', 'White + warm']], (v) => updateSettings({ look: v }))}</div>
+        <div className="field"><span className="label">Look</span>{choice(s.look, [['classic', 'Classic'], ['sand', 'Warm'], ['mist', 'Mist'], ['stone', 'Stone'], ['sky', 'Sky'], ['ivory', 'Ivory page']], (v) => updateSettings({ look: v }))}</div>
       </div>
       <div className="card">
         <h2>Storage</h2>
