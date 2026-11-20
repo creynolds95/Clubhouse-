@@ -9,6 +9,7 @@ import Practice from './screens/Practice'
 import Stats from './screens/Stats'
 import R10 from './screens/R10'
 import Import from './screens/Import'
+import Courses from './screens/Courses'
 import Settings from './screens/Settings'
 
 export default function App() {
@@ -24,6 +25,7 @@ export default function App() {
         <Route path="/stats" element={<Stats />} />
         <Route path="/r10" element={<R10 />} />
         <Route path="/import" element={<Import />} />
+        <Route path="/courses" element={<Courses />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<div className="empty"><div className="t">Page not found.</div></div>} />
       </Routes>

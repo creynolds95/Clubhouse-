@@ -1,51 +1,119 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useHeader } from '../components/Shell'
-import { api, shortDate } from '../lib/api'
+import { Icon } from '../components/Icon'
+import { Sheet } from '../components/Sheet'
+import { Spark } from '../components/Spark'
+import { api } from '../lib/api'
 import { useData } from '../lib/useData'
-import { computeStats } from '../lib/stats'
+import { updateSettings, useSettings } from '../lib/settings'
+import { clubTable, practice, scoring, tempoTrend } from '../lib/dashboard'
+
+const TILES = [
+  { id: 'scoring', name: 'Scoring' },
+  { id: 'roundStats', name: 'Fairways, greens, putts' },
+  { id: 'clubs', name: 'Club distances' },
+  { id: 'swing', name: 'Swing tempo' },
+  { id: 'practice', name: 'Practice' },
+  { id: 'focus', name: 'Focus this week' },
+]
+
+const f = (n: number | null, suf = '') => (n == null ? '—' : `${n}${suf}`)
 
 export default function Home() {
-  useHeader({ title: 'Clubhouse' })
-  const swings = useData(api.swings)
-  const rounds = useData(api.rounds)
-  const loading = swings.loading && !swings.data
-  const last = rounds.data?.slice(0, 5) ?? []
-  const avg = computeStats(last).scoringAvg
+  const [custom, setCustom] = useState(false)
+  useHeader({ title: 'Clubhouse', right: <button className="iconbtn" aria-label="Customize" onClick={() => setCustom(true)}><Icon name="sliders" /></button> })
+  const s = useSettings()
+  const swings = useData(api.swings), rounds = useData(api.rounds), shots = useData(api.r10Shots), ai = useData(api.aiStatus), usage = useData(api.usage)
+  if ((swings.loading || rounds.loading || shots.loading) && !rounds.data && !swings.data) return <div className="skeleton" style={{ height: 280 }} />
 
-  if (loading) return <><div className="skeleton" style={{ height: 96 }} /><div className="skeleton" /><div className="skeleton" /></>
-  if (!swings.data?.length && !rounds.data?.length)
-    return (
-      <div className="empty">
-        <img src="/icons/crest.svg" alt="" width={72} style={{ marginBottom: 16 }} />
-        <div className="t">Welcome to the Clubhouse.</div>
-        <div className="s">Start with a swing or your last round.</div>
-        <div className="chips" style={{ justifyContent: 'center', marginTop: 20 }}>
-          <Link className="btn primary" to="/swings?new=1">Add a swing</Link>
-          <Link className="btn" to="/rounds/new?from=Home|/">Log a round</Link>
-        </div>
-      </div>
-    )
+  const R = rounds.data ?? [], S = swings.data ?? [], H = shots.data ?? []
+  const sc = scoring(R), clubs = clubTable(H), tempo = tempoTrend(S), pr = practice(S, H, R)
+  const order = [...TILES].sort((a, b) => {
+    const ia = s.tileOrder.indexOf(a.id), ib = s.tileOrder.indexOf(b.id)
+    return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib)
+  })
+
+  const tiles: Record<string, React.ReactNode | null> = {
+    scoring: (
+      <Link key="scoring" className="tile" to="/stats?from=Home|/">
+        <div className="t">Scoring avg</div>
+        <div className="big">{f(sc.avg)}</div>
+        <div className="sub">{sc.avg == null ? 'Log a round' : `${sc.toPar != null && sc.toPar > 0 ? '+' : ''}${f(sc.toPar)} to par${sc.delta != null ? ` · ${sc.delta <= 0 ? '▼' : '▲'}${Math.abs(sc.delta)}` : ''}`}</div>
+        <Spark values={sc.trend} label="Last rounds, oldest to newest" />
+      </Link>
+    ),
+    roundStats: (
+      <Link key="roundStats" className="tile" to="/stats?from=Home|/">
+        <div className="t">Last 10 rounds</div>
+        <div className="mini"><span>Fairways</span><b>{f(sc.stats.fairwayPct, '%')}</b></div>
+        <div className="mini"><span>Greens</span><b>{f(sc.stats.girPct, '%')}</b></div>
+        <div className="mini"><span>Putts</span><b>{f(sc.stats.puttsPerRound)}</b></div>
+      </Link>
+    ),
+    clubs: (
+      <Link key="clubs" className="tile wide" to="/r10?from=Home|/">
+        <div className="t">Club carry · yards</div>
+        {clubs.length === 0 ? <div className="sub" style={{ padding: '10px 0' }}>Import an R10 session to see distances.</div> : (
+          <table className="ctab">
+            <thead><tr><th>Club</th><th>Carry</th><th>± Spread</th><th>Shots</th></tr></thead>
+            <tbody>
+              {clubs.slice(0, 6).map((c) => (
+                <tr key={c.club}><td>{c.club}</td><td>{c.carry}</td><td className={c.spread == null ? 'dim' : ''}>{c.spread == null ? '—' : `±${c.spread}`}</td><td className="dim">{c.n}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {clubs.length > 6 && <div className="sub" style={{ marginTop: 4 }}>{clubs.length - 6} more clubs</div>}
+      </Link>
+    ),
+    swing: (
+      <Link key="swing" className="tile" to="/swings?from=Home|/">
+        <div className="t">Tempo</div>
+        <div className="big">{tempo.latest ? `${tempo.latest}:1` : '—'}</div>
+        <div className="sub">{tempo.n ? `${tempo.n} ${tempo.n === 1 ? 'swing' : 'swings'} saved` : 'Add a swing'}</div>
+        <Spark values={tempo.trend} label="Tempo, oldest to newest" />
+      </Link>
+    ),
+    practice: (
+      <Link key="practice" className="tile" to="/practice">
+        <div className="t">Practice</div>
+        <div className="big">{pr.streak}<span className="sub"> {pr.streak === 1 ? 'day' : 'days'} in a row</span></div>
+        <div className="sub">This week: {pr.swings} {pr.swings === 1 ? 'swing' : 'swings'} · {pr.balls} balls</div>
+      </Link>
+    ),
+    // Stays empty until the coach is on.
+    focus: ai.data?.enabled ? (
+      <Link key="focus" className="tile wide" to="/practice"><div className="t">Focus this week</div><div className="sub">Your weekly review sets this.</div></Link>
+    ) : null,
+  }
 
   return (
     <>
-      <div className="label">Scoring average · last {last.length || 0} {last.length === 1 ? 'round' : 'rounds'}</div>
-      <div className="hero">{avg ?? '—'}</div>
-      <div className="card" style={{ marginTop: 16 }}>
-        <h2>Recent swings</h2>
-        {(swings.data ?? []).slice(0, 4).map((s) => (
-          <Link key={s.id} className="row chev" to={`/swings/${s.id}?from=Home|/`}>
-            <div className="grow">{s.club ?? 'Swing'}<div className="cap">{shortDate(s.takenAt ?? s.createdAt)}{s.metrics?.tempoRatio ? ` · tempo ${s.metrics.tempoRatio}:1` : ''}</div></div>
-          </Link>
-        ))}
-        <Link className="row chev" to="/swings" replace><div className="grow cap">All swings</div></Link>
-      </div>
-      <div className="card">
-        <h2>Recent rounds</h2>
-        {last.slice(0, 4).map((r) => (
-          <div key={r.id} className="row"><div className="grow">{r.course}<div className="cap">{shortDate(r.playedOn)}</div></div><div className="val">{r.total}</div></div>
-        ))}
-        <Link className="row chev" to="/rounds" replace><div className="grow cap">All rounds</div></Link>
-      </div>
+      {usage.data?.warnings[0] && <Link to="/settings" className="note" style={{ display: 'block', color: 'var(--flag)', padding: '0 0 8px' }}>{usage.data.warnings[0]}</Link>}
+      <div className="dash">{order.filter((t) => !s.tilesOff.includes(t.id)).map((t) => tiles[t.id])}</div>
+      {custom && (
+        <Sheet title="Customize" onClose={() => setCustom(false)}>
+          {order.map((t, i) => {
+            const on = !s.tilesOff.includes(t.id)
+            const move = (d: number) => {
+              const ids = order.map((x) => x.id), j = i + d
+              if (j < 0 || j >= ids.length) return
+              ;[ids[i], ids[j]] = [ids[j], ids[i]]
+              updateSettings({ tileOrder: ids })
+            }
+            return (
+              <div key={t.id} className="row">
+                <div className="grow">{t.name}</div>
+                <button className="iconbtn" aria-label={`Move ${t.name} up`} disabled={i === 0} onClick={() => move(-1)}><Icon name="up" size={18} /></button>
+                <button className="iconbtn" aria-label={`Move ${t.name} down`} disabled={i === order.length - 1} onClick={() => move(1)}><Icon name="down" size={18} /></button>
+                <button className="switch" role="switch" aria-checked={on} aria-label={t.name}
+                  onClick={() => updateSettings({ tilesOff: on ? [...s.tilesOff, t.id] : s.tilesOff.filter((x) => x !== t.id) })} />
+              </div>
+            )
+          })}
+        </Sheet>
+      )}
     </>
   )
 }

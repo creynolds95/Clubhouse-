@@ -29,6 +29,7 @@ export default function SwingDetail() {
       <div className="hero">{m?.tempoRatio ? `${m.tempoRatio} : 1` : '—'}</div>
       <div className="cap" style={{ color: 'var(--muted)', marginBottom: 16 }}>Tempo, backswing to downswing</div>
 
+      {!s.hasVideo && s.frames.length > 0 && <div className="note" style={{ padding: 0 }}>The video was removed to save space. Key frames and measurements are kept.</div>}
       {s.hasVideo && <video className="player" src={`/api/swings/${s.id}/video`} controls playsInline preload="metadata" />}
 
       {s.hasVideo && !m && (

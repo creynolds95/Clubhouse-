@@ -11,6 +11,7 @@ export const TABS = [
 ]
 export const MENU = [
   { to: '/stats', label: 'Stats', icon: 'stats' },
+  { to: '/courses', label: 'Courses', icon: 'rounds' },
   { to: '/r10', label: 'R10 sessions', icon: 'r10' },
   { to: '/import', label: 'Import', icon: 'plus' },
   { to: '/settings', label: 'Settings', icon: 'settings' },

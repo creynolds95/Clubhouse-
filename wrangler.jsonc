@@ -12,5 +12,6 @@
   ],
   "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "clubhouse-media" }],
   "vars": { "AI_ENABLED": "false", "AI_PER_CLIP_MODEL": "claude-haiku-5-5", "AI_WEEKLY_MODEL": "claude-sonnet-5-5" },
+  "triggers": { "crons": ["17 9 * * *"] },
   "observability": { "enabled": true }
 }
