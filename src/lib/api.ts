@@ -49,6 +49,8 @@ export const api = {
   importCourse: (c: CourseCandidate) => req<Course>('/courses/import', json('POST', c)),
   saveCourse: (c: Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'> & { id?: string }) =>
     c.id ? req<void>(`/courses/${c.id}`, json('PUT', c)).then(() => c.id!) : req<{ id: string }>('/courses', json('POST', c)).then((r) => r.id),
+  putScorecard: (id: string, tee: string, jpg: Blob) => req<void>(`/courses/${id}/scorecard?tee=${encodeURIComponent(tee)}`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpg }),
+  readScorecard: (id: string, tee: string) => req<unknown>(`/courses/${id}/scorecard/read?tee=${encodeURIComponent(tee)}`, json('POST', {})),
   deleteCourse: (id: string) => req<void>(`/courses/${id}`, { method: 'DELETE' }),
   usage: () => req<Usage>('/usage'),
   setRetention: (days: number) => req<void>('/settings/retention', json('PUT', { days })),

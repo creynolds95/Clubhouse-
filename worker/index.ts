@@ -248,6 +248,23 @@ app.put('/courses/:id', async (c) => {
     .bind(b.name.trim(), b.city ?? null, b.state ?? null, JSON.stringify(b.holes), JSON.stringify(b.tees ?? []), c.req.param('id')).run()
   return c.body(null, 204)
 })
+// ---- Scorecard photos (kept so the card can be re-checked; reading them needs the AI step) ----
+const cardKey = (id: string, tee: string) => `scorecards/${id}/${(tee || 'card').toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 30)}.jpg`
+app.put('/courses/:id/scorecard', async (c) => {
+  const buf = await c.req.arrayBuffer()
+  if (!buf.byteLength || buf.byteLength > 8_000_000) return c.json({ error: 'Photo is empty or over 8 MB' }, 400)
+  await c.env.MEDIA.put(cardKey(c.req.param('id'), c.req.query('tee') ?? ''), buf, { httpMetadata: { contentType: 'image/jpeg' } })
+  return c.body(null, 204)
+})
+app.get('/courses/:id/scorecard', async (c) => {
+  const obj = await c.env.MEDIA.get(cardKey(c.req.param('id'), c.req.query('tee') ?? ''))
+  if (!obj) return c.json({ error: 'No photo' }, 404)
+  return new Response(obj.body, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=3600' } })
+})
+app.post('/courses/:id/scorecard/read', (c) => {
+  if (!aiStatus(c.env).enabled) return c.json({ error: 'Reading a scorecard photo turns on with the AI coach. Enter the numbers by hand for now.' }, 503)
+  return c.json({ error: 'Not implemented' }, 501)
+})
 app.delete('/courses/:id', async (c) => { await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(c.req.param('id')).run(); return c.body(null, 204) })
 
 // ---- Retention + usage ----

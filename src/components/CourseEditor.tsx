@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { Sheet } from './Sheet'
 import { api } from '../lib/api'
 import { floater } from '../lib/floater'
@@ -37,6 +38,7 @@ export function CourseEditor({ course, initialName, onClose, onSaved }: { course
       <label className="field"><span className="label">City</span><input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Optional" /></label>
       <div className="field"><span className="label">Holes</span>
         <div className="chips">{([9, 18] as const).map((n) => <button key={n} className="chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div></div>
+      {course && <div style={{ padding: '0 16px 8px' }}><Link className="btn block" to={`/scorecard?course=${course.id}`}>Scorecard: photo, tees and yardages</Link></div>}
       <div className="label" style={{ padding: '4px 16px' }}>Par · {par}</div>
       <div className="holegrid" style={{ gridTemplateColumns: '40px 1fr 1fr' }}><span className="h">#</span><span className="h">Par</span><span className="h">Stroke index</span></div>
       {played.map((h, i) => (
