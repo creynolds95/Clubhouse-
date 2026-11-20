@@ -32,7 +32,7 @@ export default function Swings() {
                   ? <img src={`/api/swings/${s.id}/frames/top`} alt="" width={40} height={56} style={{ objectFit: 'cover', borderRadius: 6 }} loading="lazy" />
                   : <div style={{ width: 40, height: 56, borderRadius: 6, background: 'var(--line)' }} />}
                 <div className="grow">{s.club ?? 'Swing'}
-                  <div className="cap">{[shortDate(s.takenAt ?? s.createdAt), s.view === 'face_on' ? 'Face on' : s.view ? 'Down the line' : null, s.metrics?.tempoRatio ? `tempo ${s.metrics.tempoRatio}:1` : null].filter(Boolean).join(' · ')}</div>
+                  <div className="cap">{[shortDate(s.takenAt ?? s.createdAt), s.view === 'face_on' ? 'Face on' : s.view ? 'From behind' : null, s.metrics?.tempoRatio ? `tempo ${s.metrics.tempoRatio}:1` : null].filter(Boolean).join(' · ')}</div>
                 </div>
               </Link>
             ))}
@@ -66,7 +66,7 @@ function AddSwing({ onClose, onSaved }: { onClose: () => void; onSaved: () => vo
       <div className="field">
         <span className="label">Camera</span>
         <div className="chips">
-          <button className="chip" aria-pressed={view === 'down_the_line'} onClick={() => setView('down_the_line')}>Down the line</button>
+          <button className="chip" aria-pressed={view === 'down_the_line'} onClick={() => setView('down_the_line')}>From behind</button>
           <button className="chip" aria-pressed={view === 'face_on'} onClick={() => setView('face_on')}>Face on</button>
         </div>
       </div>

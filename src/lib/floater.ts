@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 
 /** Background-work card (UX guide §6): never blocks, survives navigation, failures persist until dismissed. */
-export type FloaterState = { text: string; progress?: number; busy: boolean; error?: boolean } | null
+export type FloaterState = { text: string; progress?: number; busy: boolean; error?: boolean; action?: { label: string; run: () => void } } | null
 let state: FloaterState = null
 const subs = new Set<() => void>()
 let fadeTimer: ReturnType<typeof setTimeout> | undefined

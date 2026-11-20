@@ -120,7 +120,7 @@ input, select, textarea { font-size: 16px; }
 
 .frames { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; padding: 0 16px 16px; }
 .frames figure { margin: 0; }
-.frames img { width: 100%; aspect-ratio: 9/16; object-fit: cover; border-radius: 8px; background: var(--line); }
+.frames img { display: block; width: 100%; height: auto; min-height: 60px; border-radius: 8px; background: var(--line); }
 .frames figcaption { font-size: 12px; color: var(--muted); text-align: center; margin-top: 2px; text-transform: capitalize; }
 video.player { width: 100%; max-height: 60vh; background: #000; border-radius: 12px; }
 

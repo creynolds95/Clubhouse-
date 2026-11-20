@@ -1,34 +1,61 @@
 import { FilesetResolver, PoseLandmarker, type NormalizedLandmark } from '@mediapipe/tasks-vision'
-import type { SwingMetrics, SwingPhase } from '../../shared/types'
+import { POSE_POINTS, type SwingMetrics, type SwingPhase } from '../../shared/types'
 
-// Pinned to the installed package version; cached by the service worker after first use.
-const WASM = 'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.2.3/wasm'
-const MODEL = 'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/latest/pose_landmarker_full.task'
+// Served from our own origin (scripts/copy-wasm.mjs, public/mediapipe): no CDN dependency, cached after first use.
+const WASM = '/mediapipe/wasm'
+const MODEL = '/mediapipe/pose_landmarker_full.task'
 
 // BlazePose landmark indices
 const L = { nose: 0, lSh: 11, rSh: 12, lEl: 13, rEl: 14, lWr: 15, rWr: 16, lHip: 23, rHip: 24 }
-const SAMPLE_FPS = 30
+let sampleFps = 24 // dropped to 12 when the browser has to run the model on the CPU
+
+const withTimeout = <T,>(p: Promise<T>, ms: number, msg: string) =>
+  new Promise<T>((res, rej) => {
+    const t = setTimeout(() => rej(new Error(msg)), ms)
+    p.then((v) => { clearTimeout(t); res(v) }, (e) => { clearTimeout(t); rej(e) })
+  })
 
 let landmarker: Promise<PoseLandmarker> | null = null
 function getLandmarker() {
-  landmarker ??= FilesetResolver.forVisionTasks(WASM).then((fs) =>
-    PoseLandmarker.createFromOptions(fs, {
-      baseOptions: { modelAssetPath: MODEL, delegate: 'GPU' },
-      runningMode: 'VIDEO',
-      numPoses: 1,
-    }),
-  )
+  if (!landmarker) {
+    const make = async () => {
+      const fs = await FilesetResolver.forVisionTasks(WASM)
+      const opts = (delegate: 'GPU' | 'CPU') => ({ baseOptions: { modelAssetPath: MODEL, delegate }, runningMode: 'VIDEO' as const, numPoses: 1 })
+      try { return await PoseLandmarker.createFromOptions(fs, opts('GPU')) }
+      catch { sampleFps = 12; return await PoseLandmarker.createFromOptions(fs, opts('CPU')) } // some browsers have no WebGL for wasm
+    }
+    landmarker = withTimeout(make(), 60_000, "The pose model didn't load. Check your connection and retry.")
+    landmarker.catch(() => { landmarker = null }) // allow a retry
+  }
   return landmarker
 }
 
 type Sample = { t: number; lm: NormalizedLandmark[] | null }
 
 const seek = (v: HTMLVideoElement, t: number) =>
-  new Promise<void>((res) => {
-    const done = () => { v.removeEventListener('seeked', done); res() }
+  new Promise<void>((res, rej) => {
+    // Seeking to the current time fires no `seeked` event; waiting for one would hang forever.
+    if (Math.abs(v.currentTime - t) < 0.002 && v.readyState >= 2) return res()
+    const cleanup = () => { clearTimeout(to); v.removeEventListener('seeked', done) }
+    const done = () => { cleanup(); res() }
+    const to = setTimeout(() => { cleanup(); rej(new Error('The video stopped responding while reading frames')) }, 5000)
     v.addEventListener('seeked', done)
     v.currentTime = t
   })
+
+function loadVideo(file: Blob): Promise<{ v: HTMLVideoElement; url: string }> {
+  const url = URL.createObjectURL(file)
+  const v = document.createElement('video')
+  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url
+  return withTimeout(
+    new Promise((res, rej) => {
+      v.onloadeddata = () => res({ v, url })
+      v.onerror = () => rej(new Error("This video format can't be read here. On iPhone, set Camera to Most Compatible, or try Safari."))
+      v.load()
+    }),
+    20_000, "The video took too long to open. Try a shorter clip.",
+  )
+}
 
 export interface PoseResult {
   metrics: SwingMetrics
@@ -42,25 +69,29 @@ export interface PoseResult {
 export async function analyzeSwingVideo(
   file: Blob,
   handedness: 'right' | 'left',
-  onProgress?: (p: number) => void,
+  onStage?: (text: string, progress: number) => void,
 ): Promise<PoseResult> {
+  onStage?.('Loading pose model…', 0)
   const pose = await getLandmarker()
-  const url = URL.createObjectURL(file)
-  const v = document.createElement('video')
-  v.muted = true; v.playsInline = true; v.preload = 'auto'; v.src = url
-  await new Promise<void>((res, rej) => { v.onloadeddata = () => res(); v.onerror = () => rej(new Error("This video can't be read on this device")) })
+  onStage?.('Opening video…', 0)
+  const { v, url } = await loadVideo(file)
+  try {
+    const dur = v.duration
+    if (!Number.isFinite(dur) || dur <= 0) throw new Error("This video has no readable length")
+    const samples: Sample[] = []
+    const n = Math.max(2, Math.floor(dur * sampleFps))
+    for (let i = 0; i < n; i++) {
+      const t = (i / (n - 1)) * Math.max(0, dur - 0.01)
+      await seek(v, t)
+      const r = pose.detectForVideo(v, Math.round(t * 1000) + 1)
+      samples.push({ t, lm: r.landmarks[0] ?? null })
+      onStage?.(`Reading frame ${i + 1} of ${n}…`, (i + 1) / n)
+    }
+    return await finish(v, samples, handedness)
+  } finally { URL.revokeObjectURL(url) }
+}
 
-  const dur = v.duration
-  const samples: Sample[] = []
-  const n = Math.max(2, Math.floor(dur * SAMPLE_FPS))
-  for (let i = 0; i < n; i++) {
-    const t = (i / (n - 1)) * Math.max(0, dur - 0.01)
-    await seek(v, t)
-    const r = pose.detectForVideo(v, Math.round(t * 1000) + 1)
-    samples.push({ t, lm: r.landmarks[0] ?? null })
-    onProgress?.((i + 1) / n)
-  }
-
+async function finish(v: HTMLVideoElement, samples: Sample[], handedness: 'right' | 'left'): Promise<PoseResult> {
   const phases = findPhases(samples)
   const metrics = measure(samples, phases, handedness)
 
@@ -69,7 +100,6 @@ export async function analyzeSwingVideo(
     await seek(v, samples[idx].t)
     frames[phase] = await grabJpeg(v)
   }
-  URL.revokeObjectURL(url)
   return { metrics, frames }
 }
 
@@ -84,17 +114,24 @@ function grabJpeg(v: HTMLVideoElement, maxEdge = 720): Promise<Blob> {
 const mid = (a: NormalizedLandmark, b: NormalizedLandmark) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
 const hands = (lm: NormalizedLandmark[]) => mid(lm[L.lWr], lm[L.rWr])
 const deg = (r: number) => (r * 180) / Math.PI
+const round = (n: number, d = 0) => Math.round(n * 10 ** d) / 10 ** d
 
 /** Index of each phase within samples. Exported for unit tests. */
 export function findPhases(samples: Sample[]): Partial<Record<SwingPhase, number>> {
   const idx = samples.map((s, i) => (s.lm ? i : -1)).filter((i) => i >= 0)
   if (idx.length < 8) throw new Error('No golfer found in this clip. Try a clip with your whole body in frame.')
 
-  const hy = new Map(idx.map((i) => [i, hands(samples[i].lm!).y]))
+  // 3-frame moving average of the hands: pose jitter otherwise creates false speed peaks.
+  const raw = idx.map((i) => hands(samples[i].lm!))
+  const sm = raw.map((_, k) => {
+    const w = raw.slice(Math.max(0, k - 1), k + 2)
+    return { x: w.reduce((s, p) => s + p.x, 0) / w.length, y: w.reduce((s, p) => s + p.y, 0) / w.length }
+  })
+  const hy = new Map(idx.map((i, k) => [i, sm[k].y]))
   const speed = new Map<number, number>()
   for (let k = 1; k < idx.length; k++) {
-    const a = hands(samples[idx[k - 1]].lm!), b = hands(samples[idx[k]].lm!)
-    speed.set(idx[k], Math.hypot(b.x - a.x, b.y - a.y) / (samples[idx[k]].t - samples[idx[k - 1]].t || 1))
+    const dt = samples[idx[k]].t - samples[idx[k - 1]].t || 1
+    speed.set(idx[k], Math.hypot(sm[k].x - sm[k - 1].x, sm[k].y - sm[k - 1].y) / dt)
   }
   // Downswing has the fastest hands in the clip.
   const peak = idx.reduce((best, i) => ((speed.get(i) ?? 0) > (speed.get(best) ?? 0) ? i : best), idx[0])
@@ -105,7 +142,7 @@ export function findPhases(samples: Sample[]): Partial<Record<SwingPhase, number
   const still = 0.15 * (speed.get(peak) ?? 1)
   let address = idx[0]
   for (const i of idx) { if (i >= top) break; if ((speed.get(i) ?? 0) < still) address = i }
-  // Impact: hands back to (or below) address height after the top, closest to peak speed.
+  // Impact: hands back to (or below) address height after the top.
   const addrY = hy.get(address)!
   const after = idx.filter((i) => i > top)
   const impact = after.find((i) => hy.get(i)! >= addrY - 0.02) ?? peak
@@ -123,51 +160,63 @@ export function findPhases(samples: Sample[]): Partial<Record<SwingPhase, number
   }
 }
 
-function measure(samples: Sample[], phases: Partial<Record<SwingPhase, number>>, handedness: 'right' | 'left'): SwingMetrics {
+/**
+ * Down-the-line metrics. From behind, the image plane is the golfer's forward/up plane, so forward lean and
+ * movement toward or away from the ball are directly visible. Rotation (shoulder and hip turn) is not, so it is not reported.
+ * Distances are % of torso length at address, which removes camera distance.
+ */
+export function measure(samples: Sample[], phases: Partial<Record<SwingPhase, number>>, handedness: 'right' | 'left'): SwingMetrics {
   const at = (p: SwingPhase) => (phases[p] != null ? samples[phases[p]!].lm : null)
-  const lineAngle = (a: NormalizedLandmark, b: NormalizedLandmark) => deg(Math.atan2(b.y - a.y, b.x - a.x))
-  const spine = (lm: NormalizedLandmark[]) => {
-    const s = mid(lm[L.lSh], lm[L.rSh]), h = mid(lm[L.lHip], lm[L.rHip])
-    return Math.round(deg(Math.atan2(s.x - h.x, h.y - s.y))) // 0 = upright, + = leaning toward the right of frame
-  }
-  // 2D proxy for rotation: apparent shoulder/hip width shrinks as the body turns away from a face-on camera.
-  const width = (lm: NormalizedLandmark[], a: number, b: number) => Math.hypot(lm[a].x - lm[b].x, lm[a].y - lm[b].y)
-  const turn = (w0: number, w: number) => Math.round(deg(Math.acos(Math.min(1, Math.max(0, w / w0)))))
-
+  const a0 = at('address')
   const out: SwingMetrics = {
-    handedness,
-    phaseTimes: {}, spineTiltDeg: {}, shoulderTurnDeg: {}, hipTurnDeg: {},
+    handedness, view: 'down_the_line', phaseTimes: {}, spineAngleDeg: {}, pose: {},
     framesSampled: samples.length, framesWithPose: samples.filter((s) => s.lm).length,
   }
-  const a0 = at('address')
+
+  // Which way is "toward the ball"? At address the hands are in front of the hips, toward the ball.
+  const dir = a0 ? (Math.sign(hands(a0).x - mid(a0[L.lHip], a0[L.rHip]).x) || 1) : 1
+  const torso = a0 ? Math.hypot(mid(a0[L.lSh], a0[L.rSh]).x - mid(a0[L.lHip], a0[L.rHip]).x, mid(a0[L.lSh], a0[L.rSh]).y - mid(a0[L.lHip], a0[L.rHip]).y) || 0.2 : 0.2
+
   for (const p of Object.keys(phases) as SwingPhase[]) {
-    out.phaseTimes[p] = Number(samples[phases[p]!].t.toFixed(3))
+    out.phaseTimes[p] = round(samples[phases[p]!].t, 3)
     const lm = at(p)
     if (!lm) continue
-    out.spineTiltDeg[p] = spine(lm)
-    if (a0) {
-      out.shoulderTurnDeg[p] = turn(width(a0, L.lSh, L.rSh), width(lm, L.lSh, L.rSh))
-      out.hipTurnDeg[p] = turn(width(a0, L.lHip, L.rHip), width(lm, L.lHip, L.rHip))
-    }
+    const sh = mid(lm[L.lSh], lm[L.rSh]), hp = mid(lm[L.lHip], lm[L.rHip])
+    out.spineAngleDeg![p] = Math.round(deg(Math.atan2((sh.x - hp.x) * dir, hp.y - sh.y)))
+    out.pose![p] = POSE_POINTS.map((i) => [round(lm[i].x, 3), round(lm[i].y, 3)])
   }
   const t = out.phaseTimes
   if (t.address != null && t.top != null && t.impact != null && t.impact > t.top)
-    out.tempoRatio = Number(((t.top - t.address) / (t.impact - t.top)).toFixed(2))
+    out.tempoRatio = round((t.top - t.address) / (t.impact - t.top), 2)
 
-  const top = at('top')
-  if (top) {
-    const [sh, el, wr] = handedness === 'right' ? [L.lSh, L.lEl, L.lWr] : [L.rSh, L.rEl, L.rWr]
-    const a1 = lineAngle(top[el], top[sh]), a2 = lineAngle(top[el], top[wr])
-    let d = Math.abs(a1 - a2); if (d > 180) d = 360 - d
-    out.leadArmDeg = Math.round(d)
-  }
-  const imp = at('impact')
+  const imp = at('impact'), top = at('top')
+  const sa = out.spineAngleDeg!
+  if (sa.address != null && sa.impact != null) out.spineChangeDeg = sa.impact - sa.address
   if (a0 && imp) {
-    const sw = width(a0, L.lSh, L.rSh) || 1
-    out.headSway = {
-      x: Number(((imp[L.nose].x - a0[L.nose].x) / sw).toFixed(2)),
-      y: Number(((imp[L.nose].y - a0[L.nose].y) / sw).toFixed(2)),
-    }
+    out.earlyExtensionPct = Math.round(((mid(imp[L.lHip], imp[L.rHip]).x - mid(a0[L.lHip], a0[L.rHip]).x) * dir / torso) * 100)
+    out.headToImpact = head(a0, imp, dir, torso)
   }
+  if (a0 && top) {
+    out.headToTop = head(a0, top, dir, torso)
+    const sh = mid(top[L.lSh], top[L.rSh])
+    out.handsAtTopPct = Math.round(((sh.y - hands(top).y) / torso) * 100)
+    const [s, e, w] = handedness === 'right' ? [L.lSh, L.lEl, L.lWr] : [L.rSh, L.rEl, L.rWr] // lead arm = left for a righty
+    const v1 = { x: top[s].x - top[e].x, y: top[s].y - top[e].y }, v2 = { x: top[w].x - top[e].x, y: top[w].y - top[e].y }
+    const cos = (v1.x * v2.x + v1.y * v2.y) / (Math.hypot(v1.x, v1.y) * Math.hypot(v2.x, v2.y) || 1)
+    out.leadArmDeg = Math.round(deg(Math.acos(Math.max(-1, Math.min(1, cos)))))
+  }
+
+  // Quality: is the whole golfer (head to ankles) visible and confidently tracked at address?
+  if (a0) {
+    const keys = POSE_POINTS.map((i) => a0[i])
+    const vis = keys.reduce((s, k) => s + (k.visibility ?? 0), 0) / keys.length
+    const ankles = [a0[27], a0[28]]
+    const bodyInFrame = ankles.every((k) => (k.visibility ?? 0) > 0.5 && k.y < 0.99 && k.y > 0) && (a0[0].visibility ?? 0) > 0.5 && a0[0].y > 0.01
+    out.quality = { bodyInFrame, visibility: round(vis, 2) }
+  } else out.quality = { bodyInFrame: false, visibility: 0 }
   return out
+}
+
+function head(a0: NormalizedLandmark[], p: NormalizedLandmark[], dir: number, torso: number) {
+  return { toward: Math.round(((p[L.nose].x - a0[L.nose].x) * dir / torso) * 100), down: Math.round(((p[L.nose].y - a0[L.nose].y) / torso) * 100) }
 }

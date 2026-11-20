@@ -1,4 +1,4 @@
-import type { Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
+import type { R10Shot, Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init)
@@ -23,6 +23,12 @@ export const api = {
   rounds: () => req<Round[]>('/rounds'),
   createRound: (r: Omit<Round, 'id' | 'total'>) => req<{ id: string; total: number }>('/rounds', json('POST', r)),
   deleteRound: (id: string) => req<void>(`/rounds/${id}`, { method: 'DELETE' }),
+  uploadImport: (file: Blob, name: string, kind: string) =>
+    req<{ id: string }>(`/imports?kind=${kind}&name=${encodeURIComponent(name)}`, { method: 'POST', headers: { 'content-type': (file as File).type || 'application/octet-stream' }, body: file }),
+  imports: () => req<{ id: string; created_at: string; kind: string; filename: string; rows_imported: number }[]>('/imports'),
+  r10Shots: () => req<R10Shot[]>('/r10/shots'),
+  importR10: (importId: string, shots: R10Shot[]) => req<{ added: number; duplicates: number }>('/r10/shots', json('POST', { importId, shots })),
+  deleteR10Session: (date: string) => req<void>(`/r10/sessions/${date}`, { method: 'DELETE' }),
   aiStatus: () => req<{ enabled: boolean; perClipModel: string; weeklyModel: string }>('/ai/status'),
 }
 
