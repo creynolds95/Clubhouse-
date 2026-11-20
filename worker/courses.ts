@@ -1,5 +1,5 @@
 import type { Course, CourseCandidate } from '../shared/types'
-import { distKm, gcaCandidates, gcaCourse, nomCandidates, normName, osmCandidates, osmHoles } from '../shared/courseMap'
+import { distKm, gcaCandidates, gcaCourse, mergeCandidates, nomCandidates, normName, ogCandidates, ogCourse, osmHoles } from '../shared/courseMap'
 
 export interface CourseEnv { DB: D1Database; GOLF_COURSE_API_KEY?: string }
 
@@ -13,6 +13,7 @@ export const toCourse = (r: Row): Course => ({
 const DFW = '32.0,-98.0,33.6,-96.0'
 const UA = 'Clubhouse/1.0 (personal golf app)'
 const GCA = 'https://api.golfcourseapi.com/v1'
+const OG = 'https://api.opengolfapi.org'
 
 const reach = (name: string) => (e: unknown) => { throw new Error(`${name} isn't responding right now. Try again in a minute.`) }
 
@@ -51,7 +52,21 @@ const gca = async (env: CourseEnv, path: string) => {
   return res.json<Record<string, never>>()
 }
 
-export const sources = (env: CourseEnv) => ({ osm: true, golfcourseapi: !!env.GOLF_COURSE_API_KEY })
+/** OpenGolfAPI needs no key. Search lives under /v1, the rest under /api/v1, so detail tries both. */
+const og = async (paths: string[]) => {
+  let last = 'OpenGolfAPI'
+  for (const p of paths) {
+    try {
+      const res = await fetch(`${OG}${p}`, { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(8_000) })
+      if (res.ok) return res.json<Record<string, never>>()
+      last = `OpenGolfAPI lookup failed (${res.status})`
+    } catch { last = "OpenGolfAPI isn't responding right now." }
+  }
+  throw new Error(last)
+}
+const ogRows = (r: Record<string, unknown>) => ((r.courses ?? r.results ?? r.data ?? (Array.isArray(r) ? r : [])) as never[])
+
+export const sources = (env: CourseEnv) => ({ osm: true, golfcourseapi: !!env.GOLF_COURSE_API_KEY, opengolf: true })
 
 const DAY = 86_400_000
 /** Read-through cache in D1. Failures are not cached. */
@@ -76,14 +91,14 @@ async function remember(env: CourseEnv, cs: CourseCandidate[]) {
     .bind(c.source, c.externalId, c.name, c.city, c.state, c.lat, c.lon)))
 }
 
-/** Mark saved ones, attach distance, sort. A GolfCourseAPI entry hides an OpenStreetMap twin of the same name, since it carries pars. */
+/** Merge twins across sources, mark saved ones, attach distance, sort. */
 async function finish(env: CourseEnv, cs: CourseCandidate[], at?: { lat: number; lon: number }) {
-  const gcaNames = new Set(cs.filter((c) => c.source === 'golfcourseapi').map((c) => normName(c.name)))
-  const out = cs.filter((c) => c.source === 'golfcourseapi' || !gcaNames.has(normName(c.name)))
+  const out = mergeCandidates(cs)
   if (out.length) {
-    const { results } = await env.DB.prepare(`SELECT id, source, external_id FROM courses WHERE external_id IN (${out.map(() => '?').join(',')})`).bind(...out.map((c) => c.externalId)).all<{ id: string; source: string; external_id: string }>()
+    const ids = out.flatMap((c) => [c.externalId, ...(c.alts ?? []).map((a) => a.externalId)])
+    const { results } = await env.DB.prepare(`SELECT id, source, external_id FROM courses WHERE external_id IN (${ids.map(() => '?').join(',')})`).bind(...ids).all<{ id: string; source: string; external_id: string }>()
     const saved = new Map(results.map((r) => [`${r.source}:${r.external_id}`, r.id]))
-    for (const c of out) { const id = saved.get(`${c.source}:${c.externalId}`); if (id) c.savedId = id }
+    for (const c of out) { const id = [c, ...(c.alts ?? [])].map((x) => saved.get(`${x.source}:${x.externalId}`)).find(Boolean); if (id) c.savedId = id }
   }
   if (at) for (const c of out) if (c.lat != null && c.lon != null) c.distanceKm = Math.round(distKm(at.lat, at.lon, c.lat, c.lon) * 10) / 10
   return out.sort((a, b) => (a.distanceKm ?? 1e9) - (b.distanceKm ?? 1e9) || a.name.localeCompare(b.name))
@@ -98,6 +113,7 @@ export async function near(env: CourseEnv, lat: number, lon: number, radiusKm = 
     await cached(env, key, 30, async () => {
       const found: CourseCandidate[] = []
       let failure: Error | null = null
+      try { found.push(...ogCandidates(ogRows(await og([`/v1/courses/search?lat=${lat}&lng=${lon}&radius_mi=${Math.round(r / 1.609)}&limit=100`])))) } catch (e) { failure = e as Error }
       for (const term of ['golf course', 'golf club', 'country club']) {
         try { found.push(...(await nominatim(term, { lat, lon }, r))) } catch (e) { failure = e as Error }
         await pause(1100)
@@ -144,6 +160,12 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
       await remember(env, found)
     } catch (e) { errors.push((e as Error).message) }
   }
+  try {
+    const found = await cached(env, `oq:${safe.toLowerCase()}`, 7, async () => ogCandidates(ogRows(await og([`/v1/courses/search?q=${encodeURIComponent(safe)}&limit=25`]))), 1)
+    info.push(`OpenGolfAPI: ${found.length}`)
+    cs.push(...found.filter(matches))
+    await remember(env, found)
+  } catch (e) { info.push(`OpenGolfAPI: ${(e as Error).message}`) }
   if (cs.length < 3) {
     try {
       const found = await cached(env, `nq:${safe.toLowerCase()}`, 7, () => nominatim(`${safe} golf`, at ?? { lat: 32.78, lon: -96.8 }, 80), 1)
@@ -152,9 +174,7 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
       await remember(env, found)
     } catch (e) { info.push(`OpenStreetMap: ${(e as Error).message}`) }
   }
-  const seen = new Set<string>()
-  const unique = cs.filter((c) => { const k = `${c.source}:${c.externalId}`; return seen.has(k) ? false : (seen.add(k), true) })
-  return { candidates: (await finish(env, unique, at)).slice(0, 30), errors, info }
+  return { candidates: (await finish(env, cs, at)).slice(0, 30), errors, info }
 }
 
 /** Turn a ZIP or city into a point. */
@@ -176,33 +196,47 @@ export async function geocode(env: CourseEnv, q: string) {
 }
 
 export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<Course> {
-  const existing = await env.DB.prepare('SELECT * FROM courses WHERE source = ? AND external_id = ?').bind(c.source, c.externalId).first<Row>()
-  if (existing) return toCourse(existing)
+  const refs = [{ source: c.source, externalId: c.externalId }, ...(c.alts ?? [])]
+  for (const r of refs) {
+    const existing = await env.DB.prepare('SELECT * FROM courses WHERE source = ? AND external_id = ?').bind(r.source, r.externalId).first<Row>()
+    if (existing) return toCourse(existing)
+  }
 
-  let holes: Course['holes'] = [], tees: Course['tees'] = [], complete = false
+  let holes: Course['holes'] = [], tees: Course['tees'] = [], complete = false, from = c.source
   const fromGca = async (id: string) => {
     const detail = (await gca(env, `/courses/${encodeURIComponent(id)}`)) as never
     return gcaCourse(((detail as { course?: never }).course ?? detail) as Parameters<typeof gcaCourse>[0])
   }
-  if (c.source === 'golfcourseapi') {
-    ;({ holes, tees, complete } = await fromGca(c.externalId))
-  } else {
-    const [type, id] = c.externalId.split('/')
-    if (!['way', 'relation', 'node'].includes(type) || !/^\d+$/.test(id)) throw new Error('Unknown course')
-    if (type !== 'node') {
-      // Hole data is a bonus. If the Overpass servers are slow, carry on with what we have.
-      try { ;({ holes, complete } = osmHoles(await overpass(`[out:json][timeout:25];${type}(${id});map_to_area->.a;way["golf"="hole"](area.a);out tags;`, 8_000))) } catch { /* par 4 placeholders below */ }
-    }
-    // OpenStreetMap pars are patchy. If GolfCourseAPI lists the same course nearby, use its card instead.
-    if (!complete && env.GOLF_COURSE_API_KEY) {
-      try {
-        const twins = gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(c.name.replace(/[^\w ]/g, ' ').trim())}`)) as { courses?: never[] }).courses ?? [])
-        const want = normName(c.name)
-        const twin = twins.find((t) => normName(t.name) === want || normName(t.name).includes(want) || want.includes(normName(t.name)))
-        if (twin) { const g = await fromGca(twin.externalId); if (g.complete) ({ holes, tees, complete } = g) }
-      } catch { /* keep the OpenStreetMap result */ }
-    }
+  const fromOg = async (id: string) => {
+    const i = encodeURIComponent(id)
+    const detail = (await og([`/api/v1/courses/${i}`, `/v1/courses/${i}`])) as Record<string, unknown>
+    const d = ((detail.course ?? detail) as Record<string, unknown>)
+    // Tees and holes may be thin on the detail call; their own endpoints fill the gaps.
+    const [t, h] = await Promise.all([
+      (Array.isArray(d.tees) && d.tees.length ? Promise.resolve(null) : og([`/api/v1/courses/${i}/tees`, `/v1/courses/${i}/tees`]).catch(() => null)),
+      (Array.isArray(d.holes) && d.holes.length ? Promise.resolve(null) : og([`/api/v1/courses/${i}/holes`, `/v1/courses/${i}/holes`]).catch(() => null)),
+    ])
+    return ogCourse({ ...d, ...(t ? { tees: (t as Record<string, unknown>).tees ?? t } : {}), ...(h ? { holes: (h as Record<string, unknown>).holes ?? h } : {}) })
   }
+  // Most detailed source first. A partial answer is kept only if nothing later does better.
+  const rank = { golfcourseapi: 3, opengolf: 2, osm: 1 } as Record<string, number>
+  for (const r of [...refs].sort((x, y) => (rank[y.source] ?? 0) - (rank[x.source] ?? 0))) {
+    try {
+      let got: { holes: Course['holes']; tees: Course['tees']; complete: boolean } | null = null
+      if (r.source === 'golfcourseapi') got = env.GOLF_COURSE_API_KEY ? await fromGca(r.externalId) : null
+      else if (r.source === 'opengolf') got = await fromOg(r.externalId)
+      else {
+        const [type, id] = r.externalId.split('/')
+        if (!['way', 'relation', 'node'].includes(type) || !/^\d+$/.test(id)) throw new Error('Unknown course')
+        if (type !== 'node') got = { tees: [], ...osmHoles(await overpass(`[out:json][timeout:25];${type}(${id});map_to_area->.a;way["golf"="hole"](area.a);out tags;`, 8_000)) }
+      }
+      if (!got) continue
+      const better = got.complete || (!complete && got.holes.length > holes.length) || (!tees.length && got.tees.length && !complete)
+      if (better) { holes = got.holes; tees = got.tees.length ? got.tees : tees; complete = got.complete; from = r.source as typeof c.source }
+      if (got.complete && got.tees.length) break
+    } catch { /* try the next source */ }
+  }
+  c = { ...c, source: from, externalId: refs.find((r) => r.source === from)?.externalId ?? c.externalId }
   // Fill any missing holes with par 4 so the course is usable; it is flagged so the pars get checked.
   const n = holes.length > 9 ? 18 : 9
   const byHole = new Map(holes.map((h) => [h.hole, h]))
@@ -230,6 +264,8 @@ export async function diagnose(env: CourseEnv, q: string) {
     env.GOLF_COURSE_API_KEY
       ? probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
       : Promise.resolve({ label: 'golfcourseapi search', error: 'no key set' }),
+    probe('opengolfapi near plano', `${OG}/v1/courses/search?lat=33.02&lng=-96.70&radius_mi=25&limit=50`, { headers: { 'user-agent': UA } }),
+    probe('opengolfapi name', `${OG}/v1/courses/search?q=${term}&limit=5`, { headers: { 'user-agent': UA } }),
     probe('nominatim', `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&bounded=1&viewbox=-98.0,33.6,-96.0,32.0&q=${term}%20golf`, { headers: { 'user-agent': UA } }),
     ...OVERPASS.map((url) => probe(`overpass ${new URL(url).host}`, url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}` })),
   ])
