@@ -22,10 +22,10 @@ export default function Rounds() {
             const par = r.holes.reduce((s, h) => s + h.par, 0)
             const diff = r.total - par
             return (
-              <div key={r.id} className="row">
+              <Link key={r.id} className="row chev" to={`/summary/${r.id}?from=Rounds|/rounds`}>
                 <div className="grow">{r.course}<div className="cap">{shortDate(r.playedOn)} · {r.holes.length} holes{r.tees ? ` · ${r.tees}` : ''}</div></div>
                 <div style={{ textAlign: 'right' }}><div style={{ fontWeight: 600 }}>{r.total}</div><div className="cap" style={{ color: 'var(--muted)', fontSize: 13 }}>{diff === 0 ? 'E' : diff > 0 ? `+${diff}` : diff}</div></div>
-              </div>
+              </Link>
             )
           })}
         </div>

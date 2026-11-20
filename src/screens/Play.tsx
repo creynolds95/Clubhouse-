@@ -6,6 +6,7 @@ import { DistanceChart } from '../components/DistanceChart'
 import { Sheet } from '../components/Sheet'
 import { floater } from '../lib/floater'
 import { submitRound } from '../lib/outbox'
+import { stashRound } from './RoundSummary'
 import { holeYards, startPlay, usePlay } from '../lib/play'
 import type { Course, HoleScore } from '../../shared/types'
 
@@ -72,13 +73,16 @@ export default function Play() {
   const finish = async () => {
     setSaving(true)
     try {
-      const sent = await submitRound({
-        externalId: s.id, course: s.course.name, playedOn: s.playedOn, tees: s.tee, source: 'manual',
+      const payload = {
+        externalId: s.id, course: s.course.name, playedOn: s.playedOn, tees: s.tee, source: 'manual' as const,
         holes: playedHoles.map((x) => ({ ...x, par: Math.min(6, Math.max(3, x.par)), strokes: Math.min(15, Math.max(1, x.strokes)), gir: girOf(x) })),
-      })
+      }
+      const { sent, id: serverId } = await submitRound(payload)
+      const key = sent ? serverId! : `local-${s.id}`
+      stashRound(key, { id: key, playedOn: payload.playedOn, course: payload.course, tees: payload.tees, holes: payload.holes, total, source: 'manual' })
       setS(null)
       floater.set({ text: sent ? `Round saved · ${total}` : `Saved on this phone · ${total}. Sends when you're online`, busy: false })
-      nav('/rounds', { replace: true })
+      nav(`/summary/${key}?from=Rounds|/rounds`, { replace: true })
     } catch (e) { floater.set({ text: `Couldn't save round. ${(e as Error).message}`, busy: false, error: true }); setSaving(false) }
   }
 

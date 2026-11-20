@@ -19,6 +19,7 @@ import Play from './screens/Play'
 import Distances from './screens/Distances'
 import Warmup from './screens/Warmup'
 import Scorecard from './screens/Scorecard'
+import RoundSummary from './screens/RoundSummary'
 
 export default function App() {
   // Send any round saved offline as soon as there is a connection again.
@@ -43,6 +44,7 @@ export default function App() {
         <Route path="/import" element={<Import />} />
         <Route path="/courses" element={<Courses />} />
         <Route path="/play" element={<Play />} />
+        <Route path="/summary/:id" element={<RoundSummary />} />
         <Route path="/scorecard" element={<Scorecard />} />
         <Route path="/warmup" element={<Warmup />} />
         <Route path="/distances" element={<Distances />} />
