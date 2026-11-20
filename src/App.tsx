@@ -1,4 +1,6 @@
+import { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
+import { flushOutbox } from './lib/outbox'
 import { Shell } from './components/Shell'
 import Home from './screens/Home'
 import Swings from './screens/Swings'
@@ -13,8 +15,19 @@ import Courses from './screens/Courses'
 import Settings from './screens/Settings'
 import Profile from './screens/Profile'
 import Clubs from './screens/Clubs'
+import Play from './screens/Play'
+import Distances from './screens/Distances'
+import Warmup from './screens/Warmup'
 
 export default function App() {
+  // Send any round saved offline as soon as there is a connection again.
+  useEffect(() => {
+    const go = () => { flushOutbox() }
+    go()
+    window.addEventListener('online', go)
+    document.addEventListener('visibilitychange', go)
+    return () => { window.removeEventListener('online', go); document.removeEventListener('visibilitychange', go) }
+  }, [])
   return (
     <Shell>
       <Routes>
@@ -28,6 +41,9 @@ export default function App() {
         <Route path="/r10" element={<R10 />} />
         <Route path="/import" element={<Import />} />
         <Route path="/courses" element={<Courses />} />
+        <Route path="/play" element={<Play />} />
+        <Route path="/warmup" element={<Warmup />} />
+        <Route path="/distances" element={<Distances />} />
         <Route path="/clubs" element={<Clubs />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
