@@ -23,7 +23,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
   const [area, setArea] = useState<Area>(loadArea)
   const [changing, setChanging] = useState(false)
   const [where, setWhere] = useState('')
-  const [online, setOnline] = useState<{ candidates: CourseCandidate[]; errors: string[] } | null>(null)
+  const [online, setOnline] = useState<{ candidates: CourseCandidate[]; errors: string[]; info?: string[] } | null>(null)
   const [searching, setSearching] = useState(false)
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
@@ -97,6 +97,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
           </button>
         ))}
         {!searching && online && !list.length && !online.errors.length && <div className="note">{searchOn ? 'Nothing found. Try fewer words, or add it by hand.' : 'No courses found here yet. Try a nearby ZIP.'}</div>}
+        {!searching && online && !list.length && online.info?.length ? <div className="cap" style={{ padding: '0 16px 8px' }}>{online.info.join(' · ')}</div> : null}
         {online?.errors.map((e) => <div key={e} className="note" style={{ color: 'var(--flag)' }}>{e}</div>)}
         <div style={{ padding: '12px 16px 0' }}><button className="btn block" onClick={() => setAdding(true)}>Add a course by hand</button></div>
       </Sheet>
