@@ -74,3 +74,12 @@ export function clubInsights(shots: R10Shot[], minShots = 3): ClubInsight[] {
 
 /** Flags a yardage gap worth fixing: too big leaves a hole in the bag, too small means two clubs do one job. */
 export const gapNote = (gap: number | null) => (gap == null ? null : gap > 20 ? 'big gap' : gap < 7 ? 'overlap' : null)
+
+/** Club families and their colours, used the same way everywhere a club appears. The label always accompanies the colour. */
+export const clubGroup = (club: string): { key: string; label: string; color: string } =>
+  /driver|wood/i.test(club) ? { key: 'wood', label: 'Wood', color: 'var(--c-navy)' }
+  : /hybrid/i.test(club) ? { key: 'hybrid', label: 'Hybrid', color: 'var(--c-slate)' }
+  : /iron/i.test(club) ? { key: 'iron', label: 'Iron', color: 'var(--c-green)' }
+  : /^(PW|GW|SW|LW)$/i.test(club) ? { key: 'wedge', label: 'Wedge', color: 'var(--c-gold)' }
+  : /putter/i.test(club) ? { key: 'putter', label: 'Putter', color: 'var(--c-plum)' }
+  : { key: 'other', label: 'Club', color: 'var(--muted)' }

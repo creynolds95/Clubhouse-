@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { api } from '../lib/api'
-import { clubInsights } from '../lib/clubInsights'
+import { clubGroup, clubInsights } from '../lib/clubInsights'
 import { clubNotes, gapNotes, type Note } from '../lib/clubNotes'
 import { NoteList } from './NoteList'
 
@@ -57,8 +57,8 @@ export function DistanceChart({ autoFocus }: { autoFocus?: boolean }) {
       <div className="card">
         <div className="row"><div className="grow cap">All clubs</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Carry</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Total</div></div>
         {[...asc].reverse().map((r) => (
-          <div key={r.club} className="row" style={{ minHeight: 52, background: pick?.normal.club === r.club ? 'var(--sand)' : undefined }}>
-            <div className="grow" style={{ fontSize: 20 }}>{r.club}</div>
+          <div key={r.club} className="row" style={{ minHeight: 52, background: pick?.normal.club === r.club ? 'var(--tint)' : undefined }}>
+            <div className="grow" style={{ fontSize: 20 }}><span aria-hidden style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: clubGroup(r.club).color, marginRight: 10 }} />{r.club}</div>
             <div style={{ width: 72, textAlign: 'right', fontSize: 22, fontWeight: 700 }}>{r.carry}</div>
             <div style={{ width: 72, textAlign: 'right', fontSize: 18, color: 'var(--muted)' }}>{r.total ?? '—'}</div>
           </div>

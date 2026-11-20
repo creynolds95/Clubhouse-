@@ -13,7 +13,7 @@ export function HoleBars({ values, labels, readout, baseline = 0, title }: { val
         <line x1="0" x2={W} y1={mid} y2={mid} stroke="var(--line)" />
         {nums.map((v, k) => {
           const h = Math.max((Math.abs(v) / max) * (mid - 6), 1.5)
-          return <rect key={k} x={k * bw + 1.5} width={bw - 3} y={v > 0 ? mid - h : mid} height={h} rx="1.5" fill={v === 0 ? 'var(--muted)' : v > 0 ? 'var(--flag)' : 'var(--fairway)'} opacity={i == null || i === k ? 1 : 0.45} />
+          return <rect key={k} x={k * bw + 1.5} width={bw - 3} y={v > 0 ? mid - h : mid} height={h} rx="1.5" fill={v === 0 ? 'var(--muted)' : v > 0 ? 'var(--c-clay)' : 'var(--c-green)'} opacity={i == null || i === k ? 1 : 0.45} />
         })}
         {labels.map((l, k) => <text key={k} x={k * bw + bw / 2} y={H + 10} fontSize="7" textAnchor="middle" fill="var(--muted)">{l}</text>)}
       </svg>
@@ -22,14 +22,14 @@ export function HoleBars({ values, labels, readout, baseline = 0, title }: { val
 }
 
 /** Horizontal bars for a short list, sorted by the caller. */
-export function HBars({ rows, unit = '' }: { rows: { label: string; value: number; note?: string }[]; unit?: string }) {
+export function HBars({ rows, unit = '' }: { rows: { label: string; value: number; note?: string; color?: string }[]; unit?: string }) {
   const max = Math.max(1, ...rows.map((r) => r.value))
   return (
     <div style={{ display: 'grid', gap: 10, padding: '4px 16px 12px' }}>
       {rows.map((r) => (
         <div key={r.label}>
           <div style={{ display: 'flex', justifyContent: 'space-between' }}><span>{r.label}</span><b>{r.value}{unit}</b></div>
-          <div style={{ height: 10, background: 'var(--line)', borderRadius: 5 }}><div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: 'var(--flag)', borderRadius: 5 }} /></div>
+          <div style={{ height: 10, background: 'var(--line)', borderRadius: 5 }}><div style={{ width: `${(r.value / max) * 100}%`, height: '100%', background: r.color ?? 'var(--c-clay)', borderRadius: 5 }} /></div>
           {r.note && <div className="cap" style={{ color: 'var(--muted)' }}>{r.note}</div>}
         </div>
       ))}

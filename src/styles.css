@@ -3,15 +3,24 @@
   --fairway: #1f3a2c;     /* deep green: brand, title bar */
   --fairway-2: #2c4d3b;
   --rough: #5b7353;       /* secondary green */
-  --ivory: #f5f0e4;       /* page */
-  --card: #fbf8f1;
-  --sand: #ddd0b2;        /* bunker: hairlines, chips */
+  --ivory: #f7f6f2;       /* page: near white, a hint of warmth */
+  --card: #ffffff;
+  --sand: #e2ddcc;        /* bunker: chip outlines only */
+  --tint: #edf2ee;        /* soft green wash for highlighted rows */
   --brass: #a8874f;       /* accent, crest gold */
   --flag: #9a4a3a;        /* muted red: rare, "over" states */
   --ink: #1d2420;
   --ink-2: #5a625c;
-  --line: #e4dccb;
-  --on-brand: #efe8d8;
+  --line: #e6e4dc;
+  --on-brand: #f4f1e8;
+
+  /* Extended chart and category colours: muted, classic, distinct in both themes. */
+  --c-green: #2f6e4b;     /* irons, fairways hit */
+  --c-navy: #2a4a72;      /* woods */
+  --c-slate: #5b7c99;     /* hybrids */
+  --c-gold: #a9812a;      /* wedges */
+  --c-plum: #76507a;      /* putter, putting */
+  --c-clay: #a4503c;      /* losses, cautions */
 
   --bg: var(--ivory);
   --surface: var(--card);
@@ -32,12 +41,14 @@
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #101a14; --surface: #17241c; --text: #ece6d6; --muted: #a3aa9f; --line: #26362c;
-    --accent: #8fb08a; --bar: #142219; --sand: #3a4a3e; color-scheme: dark;
+    --accent: #8fb08a; --bar: #142219; --sand: #3a4a3e; --tint: #1f3327; color-scheme: dark;
+    --c-green: #6fb08a; --c-navy: #7aa0d0; --c-slate: #8fb0c8; --c-gold: #d1ac55; --c-plum: #b98bbd; --c-clay: #d98470; --flag: #d98470;
   }
 }
 :root[data-theme="dark"] {
   --bg: #101a14; --surface: #17241c; --text: #ece6d6; --muted: #a3aa9f; --line: #26362c;
-  --accent: #8fb08a; --bar: #142219; --sand: #3a4a3e; color-scheme: dark;
+  --accent: #8fb08a; --bar: #142219; --sand: #3a4a3e; --tint: #1f3327; color-scheme: dark;
+  --c-green: #6fb08a; --c-navy: #7aa0d0; --c-slate: #8fb0c8; --c-gold: #d1ac55; --c-plum: #b98bbd; --c-clay: #d98470; --flag: #d98470;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -106,8 +117,8 @@ html.kb { --sa: 0; }
 .hero { font: 600 40px var(--serif); margin: 4px 0 2px; }
 .label { color: var(--muted); font-size: 13px; letter-spacing: .06em; text-transform: uppercase; }
 
-.btn { min-height: 48px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
-.btn.primary { background: var(--fairway); color: var(--on-brand); border-color: var(--fairway); }
+.btn { text-decoration: none; color: inherit; min-height: 48px; padding: 0 18px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; }
+.btn.primary { background: var(--fairway); color: var(--on-brand) !important; border-color: var(--fairway); }
 .btn.block { width: 100%; }
 .btn:disabled { opacity: .5; }
 .chips { display: flex; gap: 8px; flex-wrap: wrap; }

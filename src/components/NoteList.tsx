@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { dismiss, dismissed, type Note } from '../lib/clubNotes'
 
-const color = { caution: 'var(--flag)', info: 'var(--muted)', use: 'var(--fairway)' } as const
+const color = { caution: 'var(--flag)', info: 'var(--muted)', use: 'var(--c-green)' } as const
 const mark = { caution: '!', info: 'i', use: '→' } as const
 
 /** Quiet, dismissible notes. A dismissed note stays hidden until the data behind it changes. */

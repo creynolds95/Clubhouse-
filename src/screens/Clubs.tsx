@@ -5,7 +5,7 @@ import { Spark } from '../components/Spark'
 import { floater } from '../lib/floater'
 import { api } from '../lib/api'
 import { useData } from '../lib/useData'
-import { clubInsights, clubsInData, gapNote } from '../lib/clubInsights'
+import { clubGroup, clubInsights, clubsInData, gapNote } from '../lib/clubInsights'
 import { clubNotes, gapNotes } from '../lib/clubNotes'
 import { NoteList } from '../components/NoteList'
 import { CLUB_CHOICES } from '../../shared/types'
@@ -42,7 +42,7 @@ export default function Clubs() {
         {rows.map((r) => (
           <div key={r.club}>
             <div className="row">
-              <div className="grow">{r.club}<div className="cap">{r.n} shots{r.carrySd != null ? ` · ±${r.carrySd}` : ''}{r.clubSpeed ? ` · ${r.clubSpeed} mph` : ''}</div></div>
+              <div className="grow"><span aria-hidden style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: clubGroup(r.club).color, marginRight: 8 }} />{r.club}<div className="cap">{clubGroup(r.club).label} · {r.n} shots{r.carrySd != null ? ` · ±${r.carrySd}` : ''}{r.clubSpeed ? ` · ${r.clubSpeed} mph` : ''}</div></div>
               <div style={{ width: 70 }}><Spark values={r.trend} label={`${r.club} carry by session`} /></div>
               <div style={{ width: 64, textAlign: 'right' }}><b>{r.carry}</b><div className="cap">{r.delta == null ? 'carry' : `${r.delta > 0 ? '+' : ''}${r.delta}`}</div></div>
             </div>
@@ -52,7 +52,7 @@ export default function Clubs() {
       </div>
       <div className="label" style={{ marginTop: 16 }}>Miss pattern</div>
       <div className="card" style={{ marginTop: 8 }}>
-        {rows.map((r) => <div key={r.club} className="row"><div className="grow">{r.club}</div><div className="val">{r.miss ?? 'needs spin and direction data'}</div></div>)}
+        {rows.map((r) => <div key={r.club} className="row"><div className="grow"><span aria-hidden style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: clubGroup(r.club).color, marginRight: 8 }} />{r.club}</div><div className="val">{r.miss ?? 'needs spin and direction data'}</div></div>)}
       </div>
       <div className="note">Carry in yards, averaged per club. The small number under carry is the change since your previous session. Right and left are as seen from behind the ball.</div>
     </>
