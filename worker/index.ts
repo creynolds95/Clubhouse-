@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
-import { findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
+import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate } from '../shared/types'
 import { bumpRequests, purgeExpired, setRetentionDays, usageReport } from './maintenance'
 
@@ -212,6 +212,7 @@ const point = (c: { req: { query: (k: string) => string | undefined } }) => {
   return Number.isFinite(lat) && Number.isFinite(lon) && c.req.query('lat') ? { lat, lon } : undefined
 }
 app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '', point(c))))
+app.get('/courses/diagnose', async (c) => c.text(JSON.stringify(await diagnose(c.env, c.req.query('q') ?? ''), null, 2)))
 app.get('/courses/near', async (c) => {
   const at = point(c)
   if (!at) return c.json({ error: 'lat and lon required' }, 400)
