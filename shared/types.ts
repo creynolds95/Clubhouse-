@@ -111,3 +111,22 @@ export interface CourseCandidate {
   /** Set when this course is already saved, so picking it needs no import. */
   savedId?: string
 }
+
+/** Who the player is, so the coach can speak to them and work with their body. Everything is optional plain data. */
+export interface Profile {
+  heightIn?: number
+  weightLb?: number
+  age?: number
+  handedness?: 'right' | 'left'
+  handicap?: number
+  /** Usual miss, e.g. "slice", "pull", "thin". */
+  typicalMiss?: string
+  /** Injuries or physical limits, free text. */
+  limits?: string
+  goals?: string
+  /** Clubs in the bag. */
+  clubs?: string[]
+}
+
+export const CLUB_CHOICES = ['Driver', '3 Wood', '5 Wood', '7 Wood', '3 Hybrid', '4 Hybrid', '5 Hybrid', '3 Iron', '4 Iron', '5 Iron', '6 Iron', '7 Iron', '8 Iron', '9 Iron', 'PW', 'GW', 'SW', 'LW', 'Putter'] as const
+export const MISS_CHOICES = ['Slice', 'Fade', 'Hook', 'Draw', 'Push', 'Pull', 'Thin', 'Fat', 'Top', 'Straight'] as const

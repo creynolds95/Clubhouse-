@@ -3,7 +3,7 @@ import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
 import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
-import type { Course, CourseCandidate } from '../shared/types'
+import type { Course, CourseCandidate, Profile } from '../shared/types'
 import { bumpRequests, purgeExpired, setRetentionDays, usageReport } from './maintenance'
 
 type Env = AiEnv & CourseEnv & { DB: D1Database; MEDIA: R2Bucket; ASSETS: Fetcher }
@@ -259,6 +259,25 @@ app.put('/settings/retention', async (c) => {
   return c.body(null, 204)
 })
 app.post('/maintenance/purge', async (c) => c.json(await purgeExpired(c.env)))
+
+// ---- Player profile (plain JSON in app_settings; read by the coach) ----
+const num = (v: unknown, min: number, max: number) => { const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : undefined }
+const str = (v: unknown, max = 500) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : undefined)
+export const cleanProfile = (b: Record<string, unknown>): Profile => ({
+  heightIn: num(b.heightIn, 36, 96), weightLb: num(b.weightLb, 50, 600), age: num(b.age, 5, 120), handicap: num(b.handicap, -10, 54),
+  handedness: b.handedness === 'left' || b.handedness === 'right' ? b.handedness : undefined,
+  typicalMiss: str(b.typicalMiss, 40), limits: str(b.limits), goals: str(b.goals),
+  clubs: Array.isArray(b.clubs) ? b.clubs.filter((x): x is string => typeof x === 'string').map((x) => x.slice(0, 20)).slice(0, 20) : undefined,
+})
+app.get('/profile', async (c) => {
+  const row = await c.env.DB.prepare("SELECT value FROM app_settings WHERE key = 'profile'").first<{ value: string }>()
+  return c.json(row ? (JSON.parse(row.value) as Profile) : {})
+})
+app.put('/profile', async (c) => {
+  const p = cleanProfile(await c.req.json<Record<string, unknown>>())
+  await c.env.DB.prepare("INSERT INTO app_settings (key, value) VALUES ('profile', ?1) ON CONFLICT(key) DO UPDATE SET value = ?1").bind(JSON.stringify(p)).run()
+  return c.json(p)
+})
 
 // ---- Coach (off until the final step) ----
 app.get('/ai/status', (c) => c.json(aiStatus(c.env)))
