@@ -1,0 +1,16 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "clubhouse",
+  "main": "worker/index.ts",
+  "compatibility_date": "2026-11-01",
+  "assets": {
+    "not_found_handling": "single-page-application",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    { "binding": "DB", "database_name": "clubhouse", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "migrations" }
+  ],
+  "r2_buckets": [{ "binding": "MEDIA", "bucket_name": "clubhouse-media" }],
+  "vars": { "AI_ENABLED": "false", "AI_PER_CLIP_MODEL": "claude-haiku-5-5", "AI_WEEKLY_MODEL": "claude-sonnet-5-5" },
+  "observability": { "enabled": true }
+}
