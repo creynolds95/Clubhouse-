@@ -10,9 +10,11 @@
     <path d="M78 98 l9 3 -2 6 -11 -4 z"/>
     <path d="M42 98 l-9 3 2 6 11 -4 z"/>
   </g>
+  <!-- monogram -->
+  <circle cx="60" cy="70" r="23" fill="#1f3a2c" stroke="#b5945b" stroke-width="2.4"/>
+  <circle cx="60" cy="70" r="19" fill="none" stroke="#b5945b" stroke-width=".9" opacity=".7"/>
+  <text x="60" y="80" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="29" font-weight="700" fill="#efe8d8">R</text>
   <!-- flag -->
-  <line x1="60" y1="30" x2="60" y2="72" stroke="#b5945b" stroke-width="2.4"/>
-  <path d="M61 31 L78 37 L61 43 Z" fill="#9a4a3a"/>
-  <!-- ball -->
-  <circle cx="60" cy="84" r="6" fill="#efe8d8" stroke="#1f3a2c" stroke-width="1.2"/>
+  <line x1="60" y1="22" x2="60" y2="43" stroke="#b5945b" stroke-width="2.4"/>
+  <path d="M61 23 L76 28.5 L61 34 Z" fill="#9a4a3a"/>
 </svg>
