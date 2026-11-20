@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom'
 import { backFrom, useHeader } from '../components/Shell'
 import { api } from '../lib/api'
 import { floater } from '../lib/floater'
-import type { HoleScore } from '../../shared/types'
+import { CoursePicker, parOf } from '../components/CoursePicker'
+import type { Course, HoleScore } from '../../shared/types'
 
 const today = () => new Date().toLocaleDateString('en-CA')
 const blank = (n: number): HoleScore[] => Array.from({ length: n }, (_, i) => ({ hole: i + 1, par: 4, strokes: 0, putts: undefined, fairway: undefined, gir: undefined }))
@@ -14,6 +15,9 @@ export default function RoundNew() {
   const nav = useNavigate()
   const back = backFrom(loc.search, { label: 'Rounds', to: '/rounds' })
   const [course, setCourse] = useState('')
+  const [picked, setPicked] = useState<Course | null>(null)
+  const [tee, setTee] = useState<string | null>(null)
+  const [picking, setPicking] = useState(false)
   const [playedOn, setPlayedOn] = useState(today())
   const [count, setCount] = useState<9 | 18>(18)
   const [holes, setHoles] = useState<HoleScore[]>(blank(18))
@@ -27,7 +31,7 @@ export default function RoundNew() {
     setSaving(true)
     try {
       await api.createRound({
-        course: course.trim(), playedOn, tees: null, source: 'manual',
+        course: course.trim(), playedOn, tees: tee, source: 'manual',
         holes: played.map((h) => ({ ...h, par: Math.min(6, Math.max(3, h.par)), strokes: Math.min(15, Math.max(1, h.strokes)),
           gir: h.gir ?? (h.putts != null ? h.strokes - h.putts <= h.par - 2 : undefined) })),
       })
@@ -38,10 +42,30 @@ export default function RoundNew() {
   useHeader({ title: 'Log round', back, right: <button className="iconbtn" style={{ fontWeight: 600 }} disabled={!valid || saving} onClick={save}>{saving ? 'Saving…' : 'Save'}</button> }, [valid, saving, course, playedOn, holes, count])
 
   const num = (v: string) => (v === '' ? 0 : parseInt(v, 10) || 0)
+  const usePicked = (c: Course) => {
+    setPicked(c); setCourse(c.name); setTee(c.tees[0]?.name ?? null)
+    const n = c.holes.length > 9 ? 18 : 9
+    setCount(n)
+    setHoles((hs) => hs.map((h, i) => (i < c.holes.length ? { ...h, par: c.holes[i].par } : h)))
+  }
   return (
     <>
       <div className="card">
-        <label className="field"><span className="label">Course</span><input value={course} onChange={(e) => setCourse(e.target.value)} placeholder="Course name" /></label>
+        <div className="field"><span className="label">Course</span>
+          <button className="btn block" style={{ justifyContent: 'space-between' }} onClick={() => setPicking(true)}>
+            <span>{course || 'Choose a course'}</span><span className="dim" style={{ color: 'var(--muted)' }}>{picked ? `Par ${parOf(picked)}` : ''}</span>
+          </button>
+        </div>
+        {picked && picked.tees.length > 0 && (
+          <div className="field"><span className="label">Tees</span>
+            <div className="chips">{picked.tees.map((t) => (
+              <button key={t.name} className="chip" aria-pressed={tee === t.name} onClick={() => setTee(tee === t.name ? null : t.name)}>
+                {t.name}{t.totalYards ? ` · ${t.totalYards.toLocaleString()}` : ''}
+              </button>
+            ))}</div>
+            {(() => { const t = picked.tees.find((x) => x.name === tee); return t && (t.rating || t.slope) ? <span className="cap" style={{ color: 'var(--muted)', fontSize: 13 }}>{[t.rating && `Rating ${t.rating}`, t.slope && `Slope ${t.slope}`].filter(Boolean).join(' · ')}</span> : null })()}
+          </div>
+        )}
         <label className="field"><span className="label">Date</span><input type="date" value={playedOn} onChange={(e) => setPlayedOn(e.target.value)} /></label>
         <div className="field"><span className="label">Holes</span>
           <div className="chips">{([9, 18] as const).map((n) => <button key={n} className="chip" aria-pressed={count === n} onClick={() => setCount(n)}>{n}</button>)}</div></div>
@@ -69,6 +93,7 @@ export default function RoundNew() {
         ))}
         <div className="note">Greens in regulation are worked out from score and putts.</div>
       </div>
+      {picking && <CoursePicker onClose={() => setPicking(false)} onPick={usePicked} />}
     </>
   )
 }

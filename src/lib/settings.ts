@@ -4,8 +4,10 @@ export interface Settings {
   handedness: 'right' | 'left'
   defaultView: 'face_on' | 'down_the_line'
   theme: 'system' | 'light' | 'dark'
+  tileOrder: string[]
+  tilesOff: string[]
 }
-const DEFAULTS: Settings = { handedness: 'right', defaultView: 'down_the_line', theme: 'system' }
+const DEFAULTS: Settings = { handedness: 'right', defaultView: 'down_the_line', theme: 'system', tileOrder: [], tilesOff: [] }
 const KEY = 'clubhouse.settings'
 const subs = new Set<() => void>()
 

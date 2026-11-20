@@ -79,3 +79,25 @@ export interface R10Shot {
   club: string | null
   m: Partial<Record<R10Metric, number>>
 }
+
+export interface CourseHole { hole: number; par: number; hcp?: number }
+export interface CourseTee { name: string; rating?: number; slope?: number; totalYards?: number; yards?: number[] }
+export interface Course {
+  id: string
+  name: string
+  city: string | null
+  state: string | null
+  source: 'manual' | 'osm' | 'golfcourseapi'
+  holes: CourseHole[]
+  tees: CourseTee[]
+  /** True when pars came from a source that may be incomplete. Shown as "check pars". */
+  unverified?: boolean
+}
+/** A course found online that isn't saved yet. */
+export interface CourseCandidate {
+  source: 'osm' | 'golfcourseapi'
+  externalId: string
+  name: string
+  city: string | null
+  state: string | null
+}

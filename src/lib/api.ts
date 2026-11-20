@@ -1,4 +1,12 @@
-import type { R10Shot, Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
+import type { Course, CourseCandidate, R10Shot, Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
+
+export interface Usage {
+  retentionDays: number; lastCleanup: string | null
+  requests: { used: number; limit: number }
+  d1: { bytes: number; limit: number }
+  r2: { bytes: number; objects: number; limit: number }
+  warnings: string[]
+}
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init)
@@ -29,6 +37,16 @@ export const api = {
   r10Shots: () => req<R10Shot[]>('/r10/shots'),
   importR10: (importId: string, shots: R10Shot[]) => req<{ added: number; duplicates: number }>('/r10/shots', json('POST', { importId, shots })),
   deleteR10Session: (date: string) => req<void>(`/r10/sessions/${date}`, { method: 'DELETE' }),
+  courses: (q = '') => req<Course[]>(`/courses?q=${encodeURIComponent(q)}`),
+  courseSources: () => req<{ osm: boolean; golfcourseapi: boolean }>('/courses/sources'),
+  findCourses: (q: string) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/find?q=${encodeURIComponent(q)}`),
+  importCourse: (c: CourseCandidate) => req<Course>('/courses/import', json('POST', c)),
+  saveCourse: (c: Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'> & { id?: string }) =>
+    c.id ? req<void>(`/courses/${c.id}`, json('PUT', c)).then(() => c.id!) : req<{ id: string }>('/courses', json('POST', c)).then((r) => r.id),
+  deleteCourse: (id: string) => req<void>(`/courses/${id}`, { method: 'DELETE' }),
+  usage: () => req<Usage>('/usage'),
+  setRetention: (days: number) => req<void>('/settings/retention', json('PUT', { days })),
+  purgeNow: () => req<{ videos: number; files: number; days: number }>('/maintenance/purge', { method: 'POST' }),
   aiStatus: () => req<{ enabled: boolean; perClipModel: string; weeklyModel: string }>('/ai/status'),
 }
 

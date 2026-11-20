@@ -2,9 +2,15 @@ import { Hono } from 'hono'
 import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
+import { findOnline, importCourse, sources, toCourse, type CourseEnv } from './courses'
+import type { Course, CourseCandidate } from '../shared/types'
+import { bumpRequests, purgeExpired, setRetentionDays, usageReport } from './maintenance'
 
-type Env = AiEnv & { DB: D1Database; MEDIA: R2Bucket; ASSETS: Fetcher }
+type Env = AiEnv & CourseEnv & { DB: D1Database; MEDIA: R2Bucket; ASSETS: Fetcher }
 const app = new Hono<{ Bindings: Env }>().basePath('/api')
+
+// Count API requests per day for the usage readout (static files are free and not counted).
+app.use('*', async (c, next) => { c.executionCtx.waitUntil(bumpRequests(c.env).catch(() => {})); await next() })
 
 // Auth: Cloudflare Access sits in front of the whole hostname (single user).
 // Nothing reaches this Worker without a valid Access session.
@@ -191,6 +197,48 @@ app.delete('/r10/sessions/:date', async (c) => {
   return c.body(null, 204)
 })
 
+// ---- Courses ----
+const validHoles = (h: unknown): h is Course['holes'] =>
+  Array.isArray(h) && (h.length === 9 || h.length === 18) && h.every((x, i) => x && x.hole === i + 1 && Number.isInteger(x.par) && x.par >= 3 && x.par <= 6)
+
+app.get('/courses', async (c) => {
+  const q = (c.req.query('q') ?? '').trim()
+  const { results } = await c.env.DB.prepare('SELECT * FROM courses WHERE name LIKE ? ORDER BY name COLLATE NOCASE LIMIT 50').bind(`%${q}%`).all<never>()
+  return c.json((results as never[]).map(toCourse))
+})
+app.get('/courses/sources', (c) => c.json(sources(c.env)))
+app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '')))
+app.post('/courses/import', async (c) => {
+  try { return c.json(await importCourse(c.env, await c.req.json<CourseCandidate>()), 201) }
+  catch (e) { return c.json({ error: (e as Error).message }, 502) }
+})
+app.post('/courses', async (c) => {
+  const b = await c.req.json<Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'>>()
+  if (!b.name?.trim() || !validHoles(b.holes)) return c.json({ error: 'A course needs a name and pars for 9 or 18 holes' }, 400)
+  const id = crypto.randomUUID()
+  await c.env.DB.prepare('INSERT INTO courses (id, name, city, state, source, holes, tees) VALUES (?, ?, ?, ?, ?, ?, ?)')
+    .bind(id, b.name.trim(), b.city ?? null, b.state ?? null, 'manual', JSON.stringify(b.holes), JSON.stringify(b.tees ?? [])).run()
+  return c.json({ id }, 201)
+})
+app.put('/courses/:id', async (c) => {
+  const b = await c.req.json<Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'>>()
+  if (!b.name?.trim() || !validHoles(b.holes)) return c.json({ error: 'A course needs a name and pars for 9 or 18 holes' }, 400)
+  await c.env.DB.prepare('UPDATE courses SET name = ?, city = ?, state = ?, holes = ?, tees = ?, unverified = 0 WHERE id = ?')
+    .bind(b.name.trim(), b.city ?? null, b.state ?? null, JSON.stringify(b.holes), JSON.stringify(b.tees ?? []), c.req.param('id')).run()
+  return c.body(null, 204)
+})
+app.delete('/courses/:id', async (c) => { await c.env.DB.prepare('DELETE FROM courses WHERE id = ?').bind(c.req.param('id')).run(); return c.body(null, 204) })
+
+// ---- Retention + usage ----
+app.get('/usage', async (c) => c.json(await usageReport(c.env)))
+app.put('/settings/retention', async (c) => {
+  const { days } = await c.req.json<{ days: number }>()
+  if (!Number.isInteger(days) || days < 1 || days > 90) return c.json({ error: 'Choose 1 to 90 days' }, 400)
+  await setRetentionDays(c.env, days)
+  return c.body(null, 204)
+})
+app.post('/maintenance/purge', async (c) => c.json(await purgeExpired(c.env)))
+
 // ---- Coach (off until the final step) ----
 app.get('/ai/status', (c) => c.json(aiStatus(c.env)))
 app.post('/swings/:id/analyze', (c) => {
@@ -200,4 +248,8 @@ app.post('/swings/:id/analyze', (c) => {
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404))
 
-export default app
+export default {
+  fetch: app.fetch,
+  // Daily cleanup (see wrangler.jsonc triggers): old videos and raw Garmin files go, plain data stays.
+  scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext) { ctx.waitUntil(purgeExpired(env)) },
+}
