@@ -34,6 +34,9 @@ export async function purgeExpired(env: MaintEnv) {
     await env.MEDIA.delete(videos.results.map((v) => v.video_key))
     await env.DB.batch(videos.results.map((v) => env.DB.prepare('UPDATE swings SET video_key = NULL WHERE id = ?').bind(v.id)))
   }
+  // a swing is a video: drop stray records that never got one (failed uploads), but keep ones whose video aged out
+  const orphanCut = new Date(Date.now() - 3_600_000).toISOString()
+  await env.DB.prepare("DELETE FROM swings WHERE video_key IS NULL AND (frames IS NULL OR frames = '[]') AND metrics IS NULL AND created_at < ?").bind(orphanCut).run()
   const files = await env.DB.prepare("SELECT id, r2_key FROM imports WHERE r2_key != '' AND created_at < ?").bind(cutoff).all<{ id: string; r2_key: string }>()
   if (files.results.length) {
     await env.MEDIA.delete(files.results.map((f) => f.r2_key))
