@@ -1,5 +1,5 @@
 import type { Course, CourseCandidate } from '../shared/types'
-import { distKm, gcaCandidates, gcaCourse, normName, osmCandidates, osmHoles } from '../shared/courseMap'
+import { distKm, gcaCandidates, gcaCourse, nomCandidates, normName, osmCandidates, osmHoles } from '../shared/courseMap'
 
 export interface CourseEnv { DB: D1Database; GOLF_COURSE_API_KEY?: string }
 
@@ -19,13 +19,13 @@ const reach = (name: string) => (e: unknown) => { throw new Error(`${name} isn't
 const OVERPASS = ['https://overpass-api.de/api/interpreter', 'https://overpass.private.coffee/api/interpreter', 'https://overpass.kumi.systems/api/interpreter']
 
 /** Tries each public Overpass server in turn; any one answering is enough. */
-async function overpass(query: string) {
+async function overpass(query: string, ms = 12_000) {
   let last = 'OpenStreetMap lookup failed'
   for (const url of OVERPASS) {
     try {
       const res = await fetch(url, {
         method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}`,
-        signal: AbortSignal.timeout(12_000),
+        signal: AbortSignal.timeout(ms),
       })
       if (res.ok) return (await res.json<{ elements: never[] }>()).elements
       last = `OpenStreetMap lookup failed (${res.status})`
@@ -33,6 +33,17 @@ async function overpass(query: string) {
   }
   throw new Error(last)
 }
+
+/** OpenStreetMap's own search service. Answers from Cloudflare where the Overpass servers do not. Keep to one request a second. */
+async function nominatim(q: string, at: { lat: number; lon: number }, radiusKm: number) {
+  const dLat = radiusKm / 111, dLon = radiusKm / (111 * Math.cos((at.lat * Math.PI) / 180))
+  const box = [at.lon - dLon, at.lat + dLat, at.lon + dLon, at.lat - dLat].map((n) => n.toFixed(4)).join(',')
+  const res = await fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=40&bounded=1&viewbox=${box}&q=${encodeURIComponent(q)}`,
+    { headers: { 'user-agent': UA }, signal: AbortSignal.timeout(8_000) }).catch(reach('OpenStreetMap search'))
+  if (!res.ok) throw new Error(`OpenStreetMap search failed (${res.status})`)
+  return nomCandidates(await res.json<never[]>())
+}
+const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 const gca = async (env: CourseEnv, path: string) => {
   const res = await fetch(`${GCA}${path}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA }, signal: AbortSignal.timeout(8_000) }).catch(reach('GolfCourseAPI'))
@@ -85,7 +96,13 @@ export async function near(env: CourseEnv, lat: number, lon: number, radiusKm = 
   const errors: string[] = []
   try {
     await cached(env, key, 30, async () => {
-      const found = osmCandidates(await overpass(`[out:json][timeout:25];nwr["leisure"="golf_course"]["name"](around:${r * 1000},${lat},${lon});out tags center 150;`))
+      const found: CourseCandidate[] = []
+      let failure: Error | null = null
+      for (const term of ['golf course', 'golf club', 'country club']) {
+        try { found.push(...(await nominatim(term, { lat, lon }, r))) } catch (e) { failure = e as Error }
+        await pause(1100)
+      }
+      if (!found.length && failure) throw failure
       await remember(env, found)
       return found.length
     })
@@ -127,6 +144,14 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
       await remember(env, found)
     } catch (e) { errors.push((e as Error).message) }
   }
+  if (cs.length < 3) {
+    try {
+      const found = await cached(env, `nq:${safe.toLowerCase()}`, 7, () => nominatim(`${safe} golf`, at ?? { lat: 32.78, lon: -96.8 }, 80), 1)
+      info.push(`OpenStreetMap: ${found.length}`)
+      cs.push(...found.filter(matches))
+      await remember(env, found)
+    } catch (e) { info.push(`OpenStreetMap: ${(e as Error).message}`) }
+  }
   const seen = new Set<string>()
   const unique = cs.filter((c) => { const k = `${c.source}:${c.externalId}`; return seen.has(k) ? false : (seen.add(k), true) })
   return { candidates: (await finish(env, unique, at)).slice(0, 30), errors, info }
@@ -163,8 +188,11 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
     ;({ holes, tees, complete } = await fromGca(c.externalId))
   } else {
     const [type, id] = c.externalId.split('/')
-    if (!['way', 'relation'].includes(type) || !/^\d+$/.test(id)) throw new Error('Unknown course')
-    ;({ holes, complete } = osmHoles(await overpass(`[out:json][timeout:25];${type}(${id});map_to_area->.a;way["golf"="hole"](area.a);out tags;`)))
+    if (!['way', 'relation', 'node'].includes(type) || !/^\d+$/.test(id)) throw new Error('Unknown course')
+    if (type !== 'node') {
+      // Hole data is a bonus. If the Overpass servers are slow, carry on with what we have.
+      try { ;({ holes, complete } = osmHoles(await overpass(`[out:json][timeout:25];${type}(${id});map_to_area->.a;way["golf"="hole"](area.a);out tags;`, 8_000))) } catch { /* par 4 placeholders below */ }
+    }
     // OpenStreetMap pars are patchy. If GolfCourseAPI lists the same course nearby, use its card instead.
     if (!complete && env.GOLF_COURSE_API_KEY) {
       try {
@@ -190,18 +218,19 @@ export async function diagnose(env: CourseEnv, q: string) {
   const probe = async (label: string, url: string, init: RequestInit) => {
     const t = Date.now()
     try {
-      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) })
-      const body = (await res.text()).slice(0, 400)
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(8_000) })
+      const body = (await res.text()).slice(0, 300)
       return { label, status: res.status, ms: Date.now() - t, body }
     } catch (e) { return { label, error: (e as Error).message, ms: Date.now() - t } }
   }
-  const term = encodeURIComponent(q || 'pecan')
-  const out = [
+  const name = (q || 'pecan').replace(/[^\w ]/g, '')
+  const term = encodeURIComponent(name)
+  const query = `[out:json][timeout:20];nwr["leisure"="golf_course"]["name"~"${name}",i](32.0,-98.0,33.6,-96.0);out tags center 5;`
+  return Promise.all([
     env.GOLF_COURSE_API_KEY
-      ? await probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
-      : { label: 'golfcourseapi search', error: 'no key set' },
-  ]
-  const query = `[out:json][timeout:20];nwr["leisure"="golf_course"]["name"~"${(q || 'pecan').replace(/[^\w ]/g, '')}",i](32.0,-98.0,33.6,-96.0);out tags center 5;`
-  for (const url of OVERPASS) out.push(await probe(`overpass ${new URL(url).host}`, url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}` }))
-  return out
+      ? probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
+      : Promise.resolve({ label: 'golfcourseapi search', error: 'no key set' }),
+    probe('nominatim', `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&bounded=1&viewbox=-98.0,33.6,-96.0,32.0&q=${term}%20golf`, { headers: { 'user-agent': UA } }),
+    ...OVERPASS.map((url) => probe(`overpass ${new URL(url).host}`, url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}` })),
+  ])
 }
