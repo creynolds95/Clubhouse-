@@ -51,6 +51,14 @@
   --c-green: #6fb08a; --c-navy: #7aa0d0; --c-slate: #8fb0c8; --c-gold: #d1ac55; --c-plum: #b98bbd; --c-clay: #d98470; --flag: #d98470;
 }
 
+/* Look: pure white page, sandy gold tiles and cards (light mode only) */
+:root[data-look="sand"]:not([data-theme="dark"]) {
+  --bg: #ffffff; --surface: #efe3bd; --line: #dccb98; --tint: #f6edcf; --sand: #d9c78f;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-look="sand"]:not([data-theme="light"]):not([data-theme="dark"]) { --bg: #101a14; --surface: #17241c; --line: #26362c; --tint: #1f3327; --sand: #3a4a3e; }
+}
+
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; margin: 0; }
 html { overscroll-behavior: none; }
