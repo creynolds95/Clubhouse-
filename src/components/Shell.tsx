@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { Icon } from './Icon'
 import { useFloater, floater } from '../lib/floater'
+import { bulk, useBulk } from '../lib/bulk'
 
 export const TABS = [
   { to: '/', label: 'Home', icon: 'home' },
@@ -135,6 +136,7 @@ export function Shell({ children }: { children: ReactNode }) {
           onTouchEnd={(e) => { const sx = Number((e.currentTarget as HTMLElement).dataset.sx); if (sx - e.changedTouches[0].clientX > 50) setDrawer(false) }}>
           {navList(() => setDrawer(false))}
         </nav>
+        <BulkCard />
         <Floater />
       </div>
     </HeaderCtx.Provider>
@@ -152,6 +154,39 @@ function Floater() {
         {!f.busy && <button className="iconbtn" aria-label="Dismiss" onClick={() => floater.set(null)}><Icon name="close" size={18} /></button>}
       </div>
       {f.busy && <div className="bar"><i style={{ width: `${Math.round((f.progress ?? 0) * 100)}%` }} /></div>}
+    </div>
+  )
+}
+
+/** Upload queue card: one line per clip, failures stay until dismissed or retried. */
+function BulkCard() {
+  const items = useBulk()
+  const [open, setOpen] = useState(false)
+  if (!items.length) return null
+  const total = items.length, done = items.filter((i) => i.status === 'done').length, failed = items.filter((i) => i.status === 'failed').length
+  const active = items.find((i) => i.status === 'uploading' || i.status === 'reading')
+  const overall = (items.reduce((a, i) => a + (i.status === 'done' ? 1 : i.status === 'failed' ? 1 : i.progress), 0)) / total
+  const finished = done + failed === total
+  return (
+    <div className="floater" role="status" aria-live="polite" style={{ bottom: 'calc(132px + env(safe-area-inset-bottom))' }}>
+      <div className="top">
+        <button className="iconbtn" style={{ flex: 1, textAlign: 'left', color: 'inherit' }} aria-expanded={open} onClick={() => setOpen(!open)}>
+          {finished ? `${done} of ${total} swings added${failed ? `, ${failed} failed` : ''}` : `Swing ${Math.min(total, done + failed + 1)} of ${total} · ${active?.text ?? 'Waiting'}`}
+        </button>
+        {finished && <button className="iconbtn" aria-label="Dismiss" onClick={() => { bulk.clearFinished(); items.filter((i) => i.status === 'failed').forEach((i) => bulk.dismiss(i.key)) }}><Icon name="close" size={18} /></button>}
+      </div>
+      {!finished && <div className="bar"><i style={{ width: `${Math.round(overall * 100)}%` }} /></div>}
+      {open && (
+        <div style={{ maxHeight: 220, overflowY: 'auto', marginTop: 8, display: 'grid', gap: 6, fontSize: 14 }}>
+          {items.map((i) => (
+            <div key={i.key} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{i.file.name} · {i.club}</span>
+              <span style={{ opacity: 0.8 }}>{i.status === 'failed' ? i.error : i.status === 'queued' ? 'Waiting' : i.status === 'done' ? '✓' : `${Math.round(i.progress * 100)}%`}</span>
+              {i.status === 'failed' && <button className="btn" style={{ minHeight: 30, background: 'transparent', color: 'inherit', borderColor: 'rgba(239,232,216,.4)' }} onClick={() => bulk.retry(i.key)}>Retry</button>}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
