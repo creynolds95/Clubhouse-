@@ -46,8 +46,26 @@ async function nominatim(q: string, at: { lat: number; lon: number }, radiusKm: 
 }
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+// GolfCourseAPI's free tier is about 35 requests a day. Keep our own tally and stop a few short of it.
+const GCA_BUDGET = 28
+const today = () => new Date().toISOString().slice(0, 10)
+async function gcaSpend(env: CourseEnv, set?: number) {
+  const key = `gca-used:${today()}`
+  if (set != null) {
+    await env.DB.prepare("INSERT INTO geo_cache (key, value, fetched_at) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(key) DO UPDATE SET value = ?2, fetched_at = excluded.fetched_at").bind(key, String(set)).run()
+    return set
+  }
+  const row = await env.DB.prepare('SELECT value FROM geo_cache WHERE key = ?').bind(key).first<{ value: string }>()
+  return Number(row?.value ?? 0)
+}
+export const gcaUsed = (env: CourseEnv) => gcaSpend(env)
+
 const gca = async (env: CourseEnv, path: string) => {
+  const used = await gcaSpend(env)
+  if (used >= GCA_BUDGET) throw new Error('GolfCourseAPI: daily budget used (429)')
+  await gcaSpend(env, used + 1)
   const res = await fetch(`${GCA}${path}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA }, signal: AbortSignal.timeout(8_000) }).catch(reach('GolfCourseAPI'))
+  if (res.status === 429) await gcaSpend(env, GCA_BUDGET) // their own limit is hit; stop for the day
   if (!res.ok) throw new Error(`GolfCourseAPI lookup failed (${res.status})`)
   return res.json<Record<string, never>>()
 }
@@ -289,8 +307,10 @@ export async function diagnose(env: CourseEnv, q: string, detail = '', useGca = 
     const body = res ? await res.text() : ''
     let parsed: unknown = null
     try { const j = JSON.parse(body); parsed = gcaCourse((j.course ?? j) as never) } catch { /* not JSON */ }
-    return { status: res?.status ?? 'no response', parsed, body: body.slice(0, 2500) }
+    await gcaSpend(env, (await gcaSpend(env)) + 1)
+    return { status: res?.status ?? 'no response', parsed, body: body.slice(0, 2500), gcaUsedToday: await gcaSpend(env), budget: GCA_BUDGET }
   }
+  if (useGca && env.GOLF_COURSE_API_KEY) await gcaSpend(env, (await gcaSpend(env)) + 1)
   return Promise.all([
     env.GOLF_COURSE_API_KEY && useGca
       ? probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
