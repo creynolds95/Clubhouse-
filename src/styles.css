@@ -53,8 +53,17 @@
 
 /* Look: pure white page, sandy gold tiles and cards (light mode only) */
 :root[data-look="sand"]:not([data-theme="dark"]) {
-  --bg: #ffffff; --surface: #efe3bd; --line: #dccb98; --tint: #f6edcf; --sand: #d9c78f;
+  --bg: #ffffff; --surface: #f9f5ec; --line: #ece5d3; --tint: #eef3ee; --sand: #e2ddcc;
+  --shadow: 0 1px 2px rgba(31,58,44,.06), 0 6px 18px rgba(31,58,44,.07);
 }
+:root[data-look="sand"] .card, :root[data-look="sand"] .tile { border-radius: 16px; border-color: transparent; box-shadow: var(--shadow); }
+:root[data-look="sand"] .tile { border-left: 4px solid var(--edge, var(--c-green)); padding: 12px 14px; }
+:root[data-look="sand"] .tile .big { font-size: 38px; }
+:root[data-look="sand"] .tile .t { font-size: 12px; }
+:root[data-look="sand"] .card h2 { font: 600 20px var(--serif); letter-spacing: 0; text-transform: none; color: var(--text); padding-top: 16px; }
+:root[data-look="sand"] .titlebar { min-height: calc(64px + env(safe-area-inset-top)); }
+:root[data-look="sand"] .titlebar .left * { white-space: nowrap; }
+:root[data-look="sand"] .titlebar h1 { font-size: 19px; }
 @media (prefers-color-scheme: dark) {
   :root[data-look="sand"]:not([data-theme="light"]):not([data-theme="dark"]) { --bg: #101a14; --surface: #17241c; --line: #26362c; --tint: #1f3327; --sand: #3a4a3e; }
 }

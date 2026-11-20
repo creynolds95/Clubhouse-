@@ -46,7 +46,7 @@ export default function Home() {
 
   const tiles: Record<string, React.ReactNode | null> = {
     scoring: (
-      <Link key="scoring" className="tile" to="/stats?from=Home|/">
+      <Link key="scoring" style={{ "--edge": "var(--c-green)" } as React.CSSProperties} className="tile" to="/stats?from=Home|/">
         <div className="t">Scoring avg</div>
         <div className="big">{f(sc.avg)}</div>
         <div className="sub">{sc.avg == null ? 'Log a round' : `${sc.toPar != null && sc.toPar > 0 ? '+' : ''}${f(sc.toPar)} to par${sc.delta != null ? ` · ${sc.delta <= 0 ? '▼' : '▲'}${Math.abs(sc.delta)}` : ''}`}</div>
@@ -54,7 +54,7 @@ export default function Home() {
       </Link>
     ),
     roundStats: (
-      <Link key="roundStats" className="tile" to="/stats?from=Home|/">
+      <Link key="roundStats" style={{ "--edge": "var(--c-navy)" } as React.CSSProperties} className="tile" to="/stats?from=Home|/">
         <div className="t">Last 10 rounds</div>
         <div className="mini"><span>Fairways</span><b>{f(sc.stats.fairwayPct, '%')}</b></div>
         <div className="mini"><span>Greens</span><b>{f(sc.stats.girPct, '%')}</b></div>
@@ -62,7 +62,7 @@ export default function Home() {
       </Link>
     ),
     clubs: (
-      <Link key="clubs" className="tile wide" to="/r10?from=Home|/">
+      <Link key="clubs" style={{ "--edge": "var(--c-slate)" } as React.CSSProperties} className="tile wide" to="/r10?from=Home|/">
         <div className="t">Club carry · yards</div>
         {clubs.length === 0 ? <div className="sub" style={{ padding: '10px 0' }}>Import an R10 session to see distances.</div> : (
           <table className="ctab">
@@ -78,7 +78,7 @@ export default function Home() {
       </Link>
     ),
     swing: (
-      <Link key="swing" className="tile" to="/swings?from=Home|/">
+      <Link key="swing" style={{ "--edge": "var(--c-plum)" } as React.CSSProperties} className="tile" to="/swings?from=Home|/">
         <div className="t">Tempo</div>
         <div className="big">{tempo.latest ? `${tempo.latest}:1` : '—'}</div>
         <div className="sub">{tempo.n ? `${tempo.n} ${tempo.n === 1 ? 'swing' : 'swings'} saved` : 'Add a swing'}</div>
@@ -86,7 +86,7 @@ export default function Home() {
       </Link>
     ),
     practice: (
-      <Link key="practice" className="tile" to="/practice">
+      <Link key="practice" style={{ "--edge": "var(--c-gold)" } as React.CSSProperties} className="tile" to="/practice">
         <div className="t">Practice</div>
         <div className="big">{pr.streak}<span className="sub"> {pr.streak === 1 ? 'day' : 'days'} in a row</span></div>
         <div className="sub">This week: {pr.swings} {pr.swings === 1 ? 'swing' : 'swings'} · {pr.balls} balls</div>
@@ -94,7 +94,7 @@ export default function Home() {
     ),
     // Stays empty until the coach is on.
     focus: ai.data?.enabled ? (
-      <Link key="focus" className="tile wide" to="/practice"><div className="t">Focus this week</div><div className="sub">Your weekly review sets this.</div></Link>
+      <Link key="focus" style={{ "--edge": "var(--c-clay)" } as React.CSSProperties} className="tile wide" to="/practice"><div className="t">Focus this week</div><div className="sub">Your weekly review sets this.</div></Link>
     ) : null,
   }
 
