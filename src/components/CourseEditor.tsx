@@ -8,8 +8,8 @@ const blank = (n: number): CourseHole[] => Array.from({ length: n }, (_, i) => (
 const num = (v: string) => (v === '' ? undefined : Number(v.replace(/[^\d.]/g, '')) || undefined)
 
 /** Add or edit a course: name, 9 or 18 holes with par (and stroke index if known), and tees with rating, slope and yards. */
-export function CourseEditor({ course, onClose, onSaved }: { course?: Course; onClose: () => void; onSaved: (c: Course) => void }) {
-  const [name, setName] = useState(course?.name ?? '')
+export function CourseEditor({ course, initialName, onClose, onSaved }: { course?: Course; initialName?: string; onClose: () => void; onSaved: (c: Course) => void }) {
+  const [name, setName] = useState(course?.name ?? initialName ?? '')
   const [city, setCity] = useState(course?.city ?? '')
   const [count, setCount] = useState<9 | 18>((course?.holes.length ?? 18) > 9 ? 18 : 9)
   const [holes, setHoles] = useState<CourseHole[]>(course?.holes.length ? [...course.holes, ...blank(18).slice(course.holes.length)] : blank(18))

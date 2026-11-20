@@ -28,7 +28,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
   const [busy, setBusy] = useState(false)
   const [note, setNote] = useState<string | null>(null)
   const searchOn = dq.trim().length >= 3
-  useEffect(() => { const t = setTimeout(() => setDq(q), 300); return () => clearTimeout(t) }, [q])
+  useEffect(() => { const t = setTimeout(() => setDq(q), 500); return () => clearTimeout(t) }, [q])
   const local = useData(() => api.courses(dq), [dq])
 
   // Online results for the current search text, or the courses near the chosen area. Stale answers are dropped.
@@ -99,9 +99,9 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
         {!searching && online && !list.length && !online.errors.length && <div className="note">{searchOn ? 'Nothing found. Try fewer words, or add it by hand.' : 'No courses found here yet. Try a nearby ZIP.'}</div>}
         {!searching && online && !list.length && online.info?.length ? <div className="cap" style={{ padding: '0 16px 8px' }}>{online.info.join(' · ')}</div> : null}
         {online?.errors.map((e) => <div key={e} className="note" style={{ color: 'var(--flag)' }}>{e}</div>)}
-        <div style={{ padding: '12px 16px 0' }}><button className="btn block" onClick={() => setAdding(true)}>Add a course by hand</button></div>
+        <div style={{ padding: '12px 16px 0' }}><button className="btn block" onClick={() => setAdding(true)}>{q.trim().length >= 2 ? `Add “${q.trim()}” by hand` : 'Add a course by hand'}</button></div>
       </Sheet>
-      {adding && <CourseEditor onClose={() => setAdding(false)} onSaved={(c) => { onPick(c); onClose() }} />}
+      {adding && <CourseEditor initialName={q.trim()} onClose={() => setAdding(false)} onSaved={(c) => { onPick(c); onClose() }} />}
     </>
   )
 }
