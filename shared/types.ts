@@ -100,4 +100,10 @@ export interface CourseCandidate {
   name: string
   city: string | null
   state: string | null
+  lat?: number
+  lon?: number
+  /** Straight-line km from the search point, when known. */
+  distanceKm?: number
+  /** Set when this course is already saved, so picking it needs no import. */
+  savedId?: string
 }

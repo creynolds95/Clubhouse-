@@ -2,7 +2,7 @@ import { Hono } from 'hono'
 import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
 import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
-import { findOnline, importCourse, sources, toCourse, type CourseEnv } from './courses'
+import { findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate } from '../shared/types'
 import { bumpRequests, purgeExpired, setRetentionDays, usageReport } from './maintenance'
 
@@ -207,7 +207,20 @@ app.get('/courses', async (c) => {
   return c.json((results as never[]).map(toCourse))
 })
 app.get('/courses/sources', (c) => c.json(sources(c.env)))
-app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '')))
+const point = (c: { req: { query: (k: string) => string | undefined } }) => {
+  const lat = Number(c.req.query('lat')), lon = Number(c.req.query('lon'))
+  return Number.isFinite(lat) && Number.isFinite(lon) && c.req.query('lat') ? { lat, lon } : undefined
+}
+app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '', point(c))))
+app.get('/courses/near', async (c) => {
+  const at = point(c)
+  if (!at) return c.json({ error: 'lat and lon required' }, 400)
+  return c.json(await near(c.env, at.lat, at.lon, Number(c.req.query('r')) || 40))
+})
+app.get('/courses/geocode', async (c) => {
+  try { return c.json(await geocode(c.env, c.req.query('q') ?? '')) }
+  catch (e) { return c.json({ error: (e as Error).message }, 404) }
+})
 app.post('/courses/import', async (c) => {
   try { return c.json(await importCourse(c.env, await c.req.json<CourseCandidate>()), 201) }
   catch (e) { return c.json({ error: (e as Error).message }, 502) }
