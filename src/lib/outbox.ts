@@ -16,11 +16,11 @@ export async function flushOutbox() {
   }
 }
 
-/** Save a finished round. Offline, it is kept on the phone and sent when the connection returns. Returns whether it reached the server. */
-export async function submitRound(p: Payload): Promise<boolean> {
-  try { await api.createRound(p); return true }
+/** Save a finished round. Offline, it is kept on the phone and sent when the connection returns. Returns the server id when it was sent. */
+export async function submitRound(p: Payload): Promise<{ sent: boolean; id?: string }> {
+  try { const r = await api.createRound(p); return { sent: true, id: r.id } }
   catch (e) {
-    if (e instanceof TypeError) { write([...read().filter((x) => x.externalId !== p.externalId), p]); return false } // fetch throws TypeError when offline
+    if (e instanceof TypeError) { write([...read().filter((x) => x.externalId !== p.externalId), p]); return { sent: false } } // fetch throws TypeError when offline
     throw e
   }
 }
