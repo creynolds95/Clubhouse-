@@ -48,6 +48,7 @@ async function cached<T>(env: CourseEnv, key: string, ttlDays: number, load: () 
   const hit = await env.DB.prepare('SELECT value, fetched_at FROM geo_cache WHERE key = ?').bind(key).first<{ value: string; fetched_at: string }>()
   if (hit && Date.now() - Date.parse(hit.fetched_at) < ttlDays * DAY) return JSON.parse(hit.value) as T
   const value = await load()
+  if (Array.isArray(value) ? !value.length : !value) return value // never cache an empty answer
   await env.DB.prepare("INSERT INTO geo_cache (key, value, fetched_at) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(key) DO UPDATE SET value = ?2, fetched_at = excluded.fetched_at")
     .bind(key, JSON.stringify(value)).run()
   return value
@@ -80,8 +81,9 @@ export async function near(env: CourseEnv, lat: number, lon: number, radiusKm = 
   const errors: string[] = []
   try {
     await cached(env, key, 30, async () => {
-      await remember(env, osmCandidates(await overpass(`[out:json][timeout:25];nwr["leisure"="golf_course"]["name"](around:${r * 1000},${lat},${lon});out tags center 150;`)))
-      return 1
+      const found = osmCandidates(await overpass(`[out:json][timeout:25];nwr["leisure"="golf_course"]["name"](around:${r * 1000},${lat},${lon});out tags center 150;`))
+      await remember(env, found)
+      return found.length
     })
   } catch (e) { errors.push((e as Error).message) }
   const dLat = r / 111, dLon = r / (111 * Math.cos((lat * Math.PI) / 180))
@@ -93,22 +95,25 @@ export async function near(env: CourseEnv, lat: number, lon: number, radiusKm = 
 
 /** Name search: directory first (instant), GolfCourseAPI on top (cached a week). */
 export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; lon: number }) {
-  const errors: string[] = []
+  const errors: string[] = [], info: string[] = []
   const safe = q.replace(/[^\w ]/g, '').trim()
-  if (safe.length < 3) return { candidates: [] as CourseCandidate[], errors }
+  if (safe.length < 3) return { candidates: [] as CourseCandidate[], errors, info }
   const like = `%${safe.replace(/ /g, '%')}%`
   const { results } = await env.DB.prepare('SELECT * FROM course_index WHERE name LIKE ? LIMIT 20')
     .bind(like).all<{ source: CourseCandidate['source']; external_id: string; name: string; city: string | null; state: string | null; lat: number; lon: number }>()
   const cs: CourseCandidate[] = results.map((x) => ({ source: x.source, externalId: x.external_id, name: x.name, city: x.city, state: x.state, lat: x.lat, lon: x.lon }))
+  info.push(`nearby directory: ${cs.length}`)
+  if (!env.GOLF_COURSE_API_KEY) info.push('GolfCourseAPI: no key set on the Worker')
   if (env.GOLF_COURSE_API_KEY) {
     try {
       const found = await cached(env, `q:${safe.toLowerCase()}`, 7, async () =>
         gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(safe)}`)) as { courses?: never[] }).courses ?? []))
+      info.push(`GolfCourseAPI: ${found.length}`)
       cs.push(...found)
       await remember(env, found)
     } catch (e) { errors.push((e as Error).message) }
   }
-  return { candidates: (await finish(env, cs, at)).slice(0, 30), errors }
+  return { candidates: (await finish(env, cs, at)).slice(0, 30), errors, info }
 }
 
 /** Turn a ZIP or city into a point. */

@@ -40,7 +40,7 @@ export const api = {
   courses: (q = '') => req<Course[]>(`/courses?q=${encodeURIComponent(q)}`),
   courseSources: () => req<{ osm: boolean; golfcourseapi: boolean }>('/courses/sources'),
   findCourses: (q: string, at?: { lat: number; lon: number }) =>
-    req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/find?q=${encodeURIComponent(q)}${at ? `&lat=${at.lat}&lon=${at.lon}` : ''}`),
+    req<{ candidates: CourseCandidate[]; errors: string[]; info?: string[] }>(`/courses/find?q=${encodeURIComponent(q)}${at ? `&lat=${at.lat}&lon=${at.lon}` : ''}`),
   nearCourses: (at: { lat: number; lon: number }) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/near?lat=${at.lat}&lon=${at.lon}`),
   geocode: (q: string) => req<{ label: string; lat: number; lon: number }>(`/courses/geocode?q=${encodeURIComponent(q)}`),
   importCourse: (c: CourseCandidate) => req<Course>('/courses/import', json('POST', c)),
