@@ -6,6 +6,8 @@ import { api, shortDate } from '../lib/api'
 import { useData } from '../lib/useData'
 import { useSettings } from '../lib/settings'
 import { analyzeStored } from '../lib/upload'
+import { fmtDelta, shotsForSwing } from '../lib/tagging'
+import { floater } from '../lib/floater'
 import { PHASES, POSE_BONES, type SwingMetrics, type SwingPhase } from '../../shared/types'
 
 export default function SwingDetail() {
@@ -17,6 +19,8 @@ export default function SwingDetail() {
   const settings = useSettings()
   const [confirm, setConfirm] = useState(false)
   const [tracking, setTracking] = useState(false)
+  const [tagging, setTagging] = useState(false)
+  const shots = useData(api.r10Shots)
   useHeader({ title: s?.club ?? 'Swing', back }, [s?.club, back.to])
 
   if (loading && !s) return <><div className="skeleton" style={{ height: 300 }} /><div className="skeleton" /></>
@@ -39,6 +43,40 @@ export default function SwingDetail() {
             <button className="btn primary block" onClick={() => analyzeStored(s.id, settings.handedness, reload)}>Read swing</button>
           </div>
         </div>
+      )}
+
+      {(() => {
+        const linked = shots.data?.find((x) => x.id === s.r10ShotId)
+        const f = (k: keyof NonNullable<typeof linked>['m'], suf = '') => (linked?.m[k] != null ? `${Math.round(linked.m[k]!)}${suf}` : '—')
+        return (
+          <div className="card" style={{ marginTop: 16 }}>
+            <h2>R10 shot</h2>
+            {linked ? (
+              <div className="stat-grid">
+                <div><div className="n">{f('carry')}</div><div className="k">Carry</div></div>
+                <div><div className="n">{f('ballSpeed')}</div><div className="k">Ball mph</div></div>
+                <div><div className="n">{f('clubSpeed')}</div><div className="k">Club mph</div></div>
+              </div>
+            ) : <div className="note">{s.r10ShotId ? 'Tagged shot not found.' : 'Not tagged to a launch-monitor shot. Swings without one are fine.'}</div>}
+            <div style={{ padding: '4px 16px 16px', display: 'flex', gap: 8 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setTagging(true)}>{s.r10ShotId ? 'Change shot' : 'Tag to an R10 shot'}</button>
+              {s.r10ShotId && <button className="btn" onClick={async () => { await api.linkSwing(s.id, null); reload(); shots.reload() }}>Untag</button>}
+            </div>
+          </div>
+        )
+      })()}
+      {tagging && (
+        <Sheet title="Which shot was this?" tall onClose={() => setTagging(false)}>
+          <div className="note">Best matches first: same club, then closest in time. Phone and R10 clocks can differ, so check the numbers.</div>
+          {shotsForSwing(s, shots.data ?? []).map(({ shot, deltaSec, sameClub }) => (
+            <button key={shot.id} className="row" style={{ width: '100%', background: 'none', border: 0, borderTop: '1px solid var(--line)', textAlign: 'left', cursor: 'pointer' }}
+              onClick={async () => { try { await api.linkSwing(s.id, shot.id!); setTagging(false); reload(); shots.reload(); floater.set({ text: 'Tagged', busy: false }) } catch (e) { floater.set({ text: (e as Error).message, busy: false, error: true }) } }}>
+              <div className="grow">{shot.club ?? 'Shot'}{sameClub ? ' ✓' : ''}<div className="cap">{shortDate(shot.hitAt ?? shot.sessionDate)} · {shot.hitAt ? new Date(shot.hitAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : 'no time'} · {fmtDelta(deltaSec)}</div></div>
+              <div className="val">{shot.m.carry != null ? `${Math.round(shot.m.carry)} yd` : '—'}</div>
+            </button>
+          ))}
+          {!shots.data?.length && <div className="note">No R10 shots yet. Import a session first.</div>}
+        </Sheet>
       )}
 
       {s.frames.length > 0 && (

@@ -24,6 +24,7 @@ export const api = {
   profile: () => req<Profile>('/profile'),
   saveProfile: (p: Profile) => req<Profile>('/profile', json('PUT', p)),
   swings: () => req<Swing[]>('/swings'),
+  linkSwing: (id: string, r10ShotId: string | null) => req<void>(`/swings/${id}/link`, json('PUT', { r10ShotId })),
   swing: (id: string) => req<Swing>(`/swings/${id}`),
   createSwing: (b: { club?: string; view?: string; takenAt?: string }) => req<{ id: string }>('/swings', json('POST', b)),
   putVideo: (id: string, file: Blob) => req<void>(`/swings/${id}/video`, { method: 'PUT', headers: { 'content-type': file.type || 'video/mp4' }, body: file }),

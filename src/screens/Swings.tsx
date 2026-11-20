@@ -52,10 +52,12 @@ function AddSwing({ onClose, onSaved }: { onClose: () => void; onSaved: () => vo
   const nav = useNavigate()
 
   return (
-    <Sheet title="Add swing" onClose={onClose} saveDisabled={!file}
-      onSave={() => file && processSwing(file, { club, view, handedness: settings.handedness }, (id) => { onSaved(); nav(`/swings/${id}?from=Swings|/swings`) })}>
+    <Sheet title="Add swing" onClose={onClose} saveLabel={file ? 'Save' : 'Save without video'}
+      onSave={() => file
+        ? processSwing(file, { club, view, handedness: settings.handedness }, (id) => { onSaved(); nav(`/swings/${id}?from=Swings|/swings`) })
+        : api.createSwing({ club, view, takenAt: new Date().toISOString() }).then(({ id }) => { onSaved(); onClose(); nav(`/swings/${id}?from=Swings|/swings`) })}>
       <div className="field">
-        <span className="label">Video</span>
+        <span className="label">Video (optional)</span>
         <input ref={input} type="file" accept="video/*" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
         <button className="btn block" onClick={() => input.current?.click()}>{file ? file.name : 'Choose or record a clip'}</button>
       </div>
