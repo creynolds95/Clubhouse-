@@ -39,6 +39,7 @@ export default function R10() {
 
   return (
     <>
+      <Link className="btn block" style={{ marginBottom: 16 }} to="/clubs?from=R10 sessions|/r10">Club insights: gaps, misses, trends</Link>
       <div className="chips" style={{ marginBottom: 16 }}>
         {sessions.slice(0, 8).map(([d, n]) => (
           <button key={d} className="chip" aria-pressed={d === date} onClick={() => setParams({ d }, { replace: true })}>{shortDate(d)} · {n}</button>
