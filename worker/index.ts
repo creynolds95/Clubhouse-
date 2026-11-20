@@ -174,7 +174,7 @@ app.post('/r10/shots', async (c) => {
   )
   const batch = shots.map((s) =>
     stmt.bind(crypto.randomUUID(), importId ?? null, s.sessionDate, s.hitAt, s.club, JSON.stringify(s.m),
-      [s.hitAt ?? s.sessionDate, s.club ?? '', s.m.ballSpeed ?? '', s.m.clubSpeed ?? '', s.m.carry ?? ''].join('|')))
+      [s.hitAt ?? `${s.sessionDate}#${s.m.ballSpeed ?? ''}/${s.m.carry ?? ''}`, (s.club ?? '').toLowerCase()].join('|')))
   let added = 0
   for (let i = 0; i < batch.length; i += 50) {
     const res = await c.env.DB.batch(batch.slice(i, i + 50))

@@ -27,6 +27,7 @@ export default function Import() {
       // Always keep the original so parsers can be improved and rerun without asking for the file again.
       const { id } = await api.uploadImport(file, file.name, parse ? 'r10' : 'other')
       if (parse) setPending({ file, importId: id, parse })
+      else if (isCsv) floater.set({ text: `Found 0 shots in ${file.name}. The file is saved, but I couldn't find launch data in it. Is it a Garmin R10 session CSV?`, busy: false, error: true })
       else floater.set({ text: `${file.name} saved. I can't read this kind of file yet.`, busy: false })
     } catch (e) {
       floater.set({ text: `Import failed. ${(e as Error).message}`, busy: false, error: true })
@@ -37,8 +38,8 @@ export default function Import() {
     if (!pending) return
     try {
       const r = await api.importR10(pending.importId, pending.parse.shots)
-      floater.set({ text: `${r.added} shots imported${r.duplicates ? ` · ${r.duplicates} already there` : ''}`, busy: false })
-      nav('/r10', { replace: true })
+      floater.set({ text: r.added ? `${r.added} shots imported${r.duplicates ? ` · ${r.duplicates} already there` : ''}` : `Nothing new. All ${r.duplicates} shots were already imported.`, busy: false })
+      nav(r.added ? '/' : '/r10', { replace: true })
     } catch (e) { floater.set({ text: `Import failed. ${(e as Error).message}`, busy: false, error: true }) }
   }
 
@@ -61,7 +62,7 @@ export default function Import() {
         {!history.data?.length
           ? <div className="note">Nothing imported yet.</div>
           : history.data.map((h) => (
-            <div key={h.id} className="row"><div className="grow">{h.filename}<div className="cap">{shortDate(h.created_at)} · {h.kind === 'r10' ? `${h.rows_imported} shots` : 'saved'}</div></div></div>
+            <div key={h.id} className="row"><div className="grow">{h.filename}<div className="cap">{shortDate(h.created_at)} · {h.kind === 'r10' ? (h.rows_imported ? `${h.rows_imported} shots` : 'not imported') : 'saved'}</div></div></div>
           ))}
       </div>
 
@@ -69,7 +70,10 @@ export default function Import() {
         <Sheet title="Import R10 session" saveLabel="Import" onClose={() => setPending(null)} onSave={confirm}>
           <div className="note" style={{ color: 'var(--text)' }}>
             {pending.parse.shots.length} shots · {new Set(pending.parse.shots.map((s) => s.sessionDate)).size} session(s)
-            {pending.parse.skipped ? ` · ${pending.parse.skipped} blank rows skipped` : ''}
+            {pending.parse.skipped ? ` · ${pending.parse.skipped} non-shot rows skipped` : ''}
+          </div>
+          <div style={{ padding: '0 16px 12px' }}>
+            <button className="btn primary block" onClick={() => { void confirm(); setPending(null) }}>Import {pending.parse.shots.length} shots</button>
           </div>
           <div className="card" style={{ margin: '0 16px' }}>
             {pending.parse.mapped.map((m) => (

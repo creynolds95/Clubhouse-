@@ -5,7 +5,8 @@ import type { R10Metric, R10Shot } from '../../shared/types'
 const METRICS: [R10Metric, RegExp][] = [
   ['faceToPath', /face\s*to\s*path/],
   ['spinAxis', /spin\s*axis/],
-  ['spin', /spin\s*rate|back\s*spin|^spin\b/],
+  ['spin', /^spin\s*rate$|^total\s*spin/],
+  ['spin', /spin\s*rate(?!\s*type)|back\s*spin|^spin\b/],
   ['launchDir', /launch\s*direction|horizontal\s*launch/],
   ['launch', /launch\s*angle|vertical\s*launch|^launch\b/],
   ['clubSpeed', /club\s*(head\s*)?speed|clubhead/],
@@ -14,10 +15,13 @@ const METRICS: [R10Metric, RegExp][] = [
   ['attack', /attack/],
   ['path', /club\s*path/],
   ['face', /club\s*face|face\s*angle/],
-  ['offline', /offline|deviation|lateral|side\s*dist/],
+  ['offline', /carry\s*deviation\s*dist|offline|lateral|side\s*dist/],
+  ['offline', /deviation\s*dist/],
   ['carry', /carry/],
+  ['total', /^total\s*dist|^total$/],
   ['total', /total/],
   ['apex', /apex|peak\s*height/],
+  ['tempo', /^swing\s*tempo|^tempo$/],
 ]
 
 const unitOf = (h: string) => /[[(]\s*([^\])]+?)\s*[\])]/.exec(h)?.[1]?.toLowerCase() ?? ''
@@ -66,11 +70,12 @@ export function parseR10Csv(text: string, fallbackDate: string): R10Parse | null
   const head = rows[hi]
   const cols = new Map<number, { metric: R10Metric; unit: string }>()
   const used = new Set<R10Metric>()
-  head.forEach((h, i) => {
-    const c = clean(h)
-    const hit = METRICS.find(([m, re]) => !used.has(m) && re.test(c))
-    if (hit) { cols.set(i, { metric: hit[0], unit: unitOf(h) }); used.add(hit[0]) }
-  })
+  // Metric by metric, so the best-named column wins (e.g. "Spin Rate" over "Backspin", "Carry Deviation Distance" over "...Angle").
+  for (const [m, re] of METRICS) {
+    if (used.has(m)) continue
+    const i = head.findIndex((h, idx) => !cols.has(idx) && re.test(clean(h)))
+    if (i >= 0) { cols.set(i, { metric: m, unit: unitOf(head[i]) }); used.add(m) }
+  }
   if (!used.has('ballSpeed') && !used.has('clubSpeed')) return null
 
   // Find the date and club columns by header words and, failing that, by what the first data rows contain
@@ -79,7 +84,12 @@ export function parseR10Csv(text: string, fallbackDate: string): R10Parse | null
   const looksDate = (v: string) => /\d/.test(v) && /[/:.\-]/.test(v) && !Number.isNaN(new Date(v).getTime()) && v.trim().length >= 8
   let timeCol = head.findIndex((h, i) => !cols.has(i) && /date|time|timestamp|tid|dato|datum/.test(clean(h)))
   if (timeCol < 0) timeCol = head.findIndex((_, i) => !cols.has(i) && sample.some((r) => looksDate(r[i] ?? '')))
-  let clubCol = head.findIndex((h, i) => !cols.has(i) && i !== timeCol && /club|type|name|navn|kølle/.test(clean(h)))
+  // Garmin has both "Club Name" (usually empty) and "Club Type" ("Driver", "7 Iron"). Take the one that has values, preferring "type".
+  const filled = (i: number) => sample.some((r) => (r[i] ?? '').trim() !== '')
+  const clubRank = (h: string) => (/club\s*type|kølle/.test(h) ? 0 : /^club$/.test(h) ? 1 : /club/.test(h) ? 2 : /type|name|navn/.test(h) ? 3 : 9)
+  let clubCol = head.map((h, i) => ({ i, r: clubRank(clean(h)) }))
+    .filter(({ i, r }) => r < 9 && !cols.has(i) && i !== timeCol && filled(i))
+    .sort((a, b) => a.r - b.r)[0]?.i ?? -1
   if (clubCol < 0) clubCol = head.findIndex((_, i) => !cols.has(i) && i !== timeCol && sample.some((r) => /[a-zA-ZæøåäöüÆØÅ]/.test(r[i] ?? '')))
 
   const shots: R10Shot[] = []
@@ -116,5 +126,5 @@ export const localDate = (d: Date) => d.toLocaleDateString('en-CA')
 export const METRIC_LABEL: Record<R10Metric, string> = {
   clubSpeed: 'Club speed', ballSpeed: 'Ball speed', smash: 'Smash factor', carry: 'Carry', total: 'Total',
   attack: 'Attack angle', path: 'Club path', face: 'Face angle', faceToPath: 'Face to path', launch: 'Launch angle',
-  launchDir: 'Launch direction', spin: 'Spin rate', spinAxis: 'Spin axis', apex: 'Apex', offline: 'Offline',
+  launchDir: 'Launch direction', spin: 'Spin rate', spinAxis: 'Spin axis', apex: 'Apex', offline: 'Offline', tempo: 'Swing tempo',
 }

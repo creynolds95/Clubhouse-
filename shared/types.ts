@@ -70,7 +70,7 @@ export interface Round {
 /** Normalised launch-monitor metrics. Speeds in mph, distances in yards, angles in degrees, spin in rpm. */
 export type R10Metric =
   | 'clubSpeed' | 'ballSpeed' | 'smash' | 'carry' | 'total' | 'attack' | 'path' | 'face' | 'faceToPath'
-  | 'launch' | 'launchDir' | 'spin' | 'spinAxis' | 'apex' | 'offline'
+  | 'launch' | 'launchDir' | 'spin' | 'spinAxis' | 'apex' | 'offline' | 'tempo'
 
 export interface R10Shot {
   id?: string
