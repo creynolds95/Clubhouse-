@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { backFrom, useHeader } from '../components/Shell'
 import { CoursePicker } from '../components/CoursePicker'
 import { DistanceChart } from '../components/DistanceChart'
@@ -49,7 +49,7 @@ export default function Play() {
             <div className="field"><span className="label">Tees you're playing</span>
               <div className="chips">{c.tees.map((t) => <button key={t.name} className="chip" aria-pressed={pick?.tee === t.name} onClick={() => setPick({ course: c, tee: t.name })}>{t.name}{t.totalYards ? ` · ${t.totalYards.toLocaleString()}` : ''}</button>)}</div></div>
           )}
-          {c && !c.tees.some((t) => t.yards?.some(Boolean)) && <div className="note">No hole yardages for this course yet. Scores still work.</div>}
+          {c && !c.tees.some((t) => t.yards?.some(Boolean)) && <div className="note">No hole yardages for this course yet. Scores still work. <Link to={`/scorecard?course=${c.id}&from=Play|/play`} style={{ textDecoration: 'underline' }}>Add the scorecard</Link></div>}
         </div>
         <div style={{ padding: '4px 16px' }}>
           <button className="btn primary block" disabled={!c} style={{ minHeight: 56 }} onClick={() => c && setS(startPlay(c, pick?.tee ?? c.tees[0]?.name ?? null, c.holes.length > 9 ? 18 : 9))}>Start round</button>
