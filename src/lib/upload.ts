@@ -26,15 +26,17 @@ export async function analyzeStored(id: string, handedness: Handed, onDone?: (id
 
 /** Upload, then read the swing in the background. Progress shows in the floater. */
 export async function processSwing(file: File, opts: { club?: string; view?: string; handedness: Handed }, onDone?: (id: string) => void) {
-  let id: string
+  let id: string | undefined
   try {
     floater.set({ text: 'Uploading swing…', busy: true, progress: 0.02 })
     const takenAt = file.lastModified ? new Date(file.lastModified).toISOString() : undefined
     id = (await api.createSwing({ club: opts.club, view: opts.view, takenAt })).id
     await api.putVideo(id, file)
   } catch (e) {
+    // Don't leave an empty swing behind when the video never arrived.
+    if (id) await api.deleteSwing(id).catch(() => {})
     floater.set({ text: `Upload failed. ${(e as Error).message}`, busy: false, error: true })
     return
   }
-  await analyzeStored(id, opts.handedness, onDone, file)
+  await analyzeStored(id!, opts.handedness, onDone, file)
 }

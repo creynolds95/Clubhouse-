@@ -8,11 +8,14 @@ export interface Usage {
   warnings: string[]
 }
 
+/** The server answered with an error. Network failures stay TypeError (that is how fetch reports offline). */
+export class ApiError extends Error { constructor(msg: string, readonly status: number) { super(msg) } }
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
     const msg = await res.json().then((j) => j.error).catch(() => null)
-    throw new Error(msg || `Request failed (${res.status})`)
+    throw new ApiError(msg || `Request failed (${res.status})`, res.status)
   }
   return res.status === 204 ? (undefined as T) : res.json()
 }

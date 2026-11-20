@@ -209,7 +209,7 @@ app.post('/r10/shots', async (c) => {
 
 app.get('/r10/shots', async (c) => {
   const { results } = await c.env.DB.prepare(
-    'SELECT id, session_date, hit_at, club, metrics, (SELECT w.id FROM swings w WHERE w.r10_shot_id = r10_shots.id LIMIT 1) AS swing_id FROM r10_shots ORDER BY session_date DESC, hit_at ASC LIMIT 5000',
+    'SELECT id, session_date, hit_at, club, metrics, (SELECT w.id FROM swings w WHERE w.r10_shot_id = r10_shots.id LIMIT 1) AS swing_id FROM r10_shots ORDER BY session_date DESC, hit_at ASC LIMIT 20000',
   ).all<{ id: string; session_date: string; hit_at: string | null; club: string | null; metrics: string; swing_id: string | null }>()
   const shots: R10Shot[] = results.map((r) => ({ id: r.id, sessionDate: r.session_date, hitAt: r.hit_at, club: r.club, m: JSON.parse(r.metrics), ...(r.swing_id ? { swingId: r.swing_id } : {}) }))
   return c.json(shots)
