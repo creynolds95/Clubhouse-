@@ -184,3 +184,24 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
     .bind(course.id, course.name, course.city, course.state, course.source, c.externalId, JSON.stringify(course.holes), JSON.stringify(course.tees), course.unverified ? 1 : 0, c.lat ?? null, c.lon ?? null).run()
   return course
 }
+
+/** Raw responses from each source, for debugging. Never includes the key. */
+export async function diagnose(env: CourseEnv, q: string) {
+  const probe = async (label: string, url: string, init: RequestInit) => {
+    const t = Date.now()
+    try {
+      const res = await fetch(url, { ...init, signal: AbortSignal.timeout(12_000) })
+      const body = (await res.text()).slice(0, 400)
+      return { label, status: res.status, ms: Date.now() - t, body }
+    } catch (e) { return { label, error: (e as Error).message, ms: Date.now() - t } }
+  }
+  const term = encodeURIComponent(q || 'pecan')
+  const out = [
+    env.GOLF_COURSE_API_KEY
+      ? await probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
+      : { label: 'golfcourseapi search', error: 'no key set' },
+  ]
+  const query = `[out:json][timeout:20];nwr["leisure"="golf_course"]["name"~"${(q || 'pecan').replace(/[^\w ]/g, '')}",i](32.0,-98.0,33.6,-96.0);out tags center 5;`
+  for (const url of OVERPASS) out.push(await probe(`overpass ${new URL(url).host}`, url, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded', 'user-agent': UA }, body: `data=${encodeURIComponent(query)}` }))
+  return out
+}
