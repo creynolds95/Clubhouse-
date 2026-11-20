@@ -87,7 +87,7 @@ export interface Course {
   name: string
   city: string | null
   state: string | null
-  source: 'manual' | 'osm' | 'golfcourseapi'
+  source: 'manual' | 'osm' | 'golfcourseapi' | 'opengolf'
   holes: CourseHole[]
   tees: CourseTee[]
   /** True when pars came from a source that may be incomplete. Shown as "check pars". */
@@ -95,7 +95,11 @@ export interface Course {
 }
 /** A course found online that isn't saved yet. */
 export interface CourseCandidate {
-  source: 'osm' | 'golfcourseapi'
+  source: 'osm' | 'golfcourseapi' | 'opengolf'
+  /** Every source that listed this course. The row itself is the one with the most detail. */
+  tags?: ('osm' | 'golfcourseapi' | 'opengolf')[]
+  /** The same course under the other sources, used as fallbacks on import. */
+  alts?: { source: 'osm' | 'golfcourseapi' | 'opengolf'; externalId: string }[]
   externalId: string
   name: string
   city: string | null

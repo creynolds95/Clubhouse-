@@ -38,7 +38,7 @@ export const api = {
   importR10: (importId: string, shots: R10Shot[]) => req<{ added: number; duplicates: number }>('/r10/shots', json('POST', { importId, shots })),
   deleteR10Session: (date: string) => req<void>(`/r10/sessions/${date}`, { method: 'DELETE' }),
   courses: (q = '') => req<Course[]>(`/courses?q=${encodeURIComponent(q)}`),
-  courseSources: () => req<{ osm: boolean; golfcourseapi: boolean }>('/courses/sources'),
+  courseSources: () => req<{ osm: boolean; golfcourseapi: boolean; opengolf: boolean }>('/courses/sources'),
   findCourses: (q: string, at?: { lat: number; lon: number }) =>
     req<{ candidates: CourseCandidate[]; errors: string[]; info?: string[] }>(`/courses/find?q=${encodeURIComponent(q)}${at ? `&lat=${at.lat}&lon=${at.lon}` : ''}`),
   nearCourses: (at: { lat: number; lon: number }) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/near?lat=${at.lat}&lon=${at.lon}`),

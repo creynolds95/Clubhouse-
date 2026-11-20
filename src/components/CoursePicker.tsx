@@ -6,6 +6,9 @@ import { floater } from '../lib/floater'
 import { useData } from '../lib/useData'
 import type { Course, CourseCandidate } from '../../shared/types'
 
+const TAG: Record<string, string> = { golfcourseapi: 'GolfCourseAPI', opengolf: 'OpenGolf', osm: 'OSM' }
+const tagLabel = (c: { tags?: string[]; source: string }) => (c.tags?.length ? c.tags : [c.source]).map((t) => TAG[t] ?? t).join(' + ')
+
 export const parOf = (c: Course) => c.holes.reduce((s, h) => s + h.par, 0)
 
 type Area = { label: string; lat: number; lon: number }
@@ -93,7 +96,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
         {searching && <div className="note">{searchOn ? 'Searching…' : 'Finding courses nearby…'}</div>}
         {list.map((c) => (
           <button key={`${c.source}${c.externalId}`} className="row" disabled={busy} style={rowStyle} onClick={() => take(c)}>
-            <div className="grow">{c.name}<div className="cap">{[mi(c.distanceKm), c.city, c.savedId ? 'saved' : null].filter(Boolean).join(' · ')}</div></div>
+            <div className="grow">{c.name}<div className="cap">{[mi(c.distanceKm), c.city, c.savedId ? 'saved' : null, tagLabel(c)].filter(Boolean).join(' · ')}</div></div>
           </button>
         ))}
         {!searching && online && !list.length && !online.errors.length && <div className="note">{searchOn ? 'Nothing found. Try fewer words, or add it by hand.' : 'No courses found here yet. Try a nearby ZIP.'}</div>}

@@ -92,3 +92,58 @@ export function distKm(aLat: number, aLon: number, bLat: number, bLon: number) {
 
 /** Lowercase, drop punctuation and filler words so "Pecan Hollow Golf Course" matches "Pecan Hollow". */
 export const normName = (n: string) => n.toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\b(golf|course|club|country|the|and|at)\b/g, ' ').replace(/\s+/g, ' ').trim()
+
+// OpenGolfAPI (api.opengolfapi.org). List rows: id, course_name, city, state, latitude, longitude.
+// Detail/tee/hole shapes are not fully documented, so field names are matched tolerantly.
+type OgRow = { id?: number | string; course_name?: string; city?: string; state?: string; latitude?: number | string; longitude?: number | string }
+export function ogCandidates(rows: OgRow[]): CourseCandidate[] {
+  return rows.filter((r) => r.id != null && r.course_name).map((r) => {
+    const lat = Number(r.latitude), lon = Number(r.longitude)
+    return {
+      source: 'opengolf' as const, externalId: String(r.id), name: r.course_name!, city: r.city ?? null, state: r.state ?? null,
+      ...(r.latitude != null && r.longitude != null && Number.isFinite(lat) && Number.isFinite(lon) ? { lat, lon } : {}),
+    }
+  })
+}
+
+type Any = Record<string, unknown>
+const num = (...v: unknown[]) => { for (const x of v) { const n = Number(x); if (x != null && x !== '' && Number.isFinite(n)) return n } return undefined }
+const list = (v: unknown): Any[] => (Array.isArray(v) ? (v as Any[]) : v && typeof v === 'object' ? Object.values(v as Any).flat().filter((x) => x && typeof x === 'object') as Any[] : [])
+
+/** Holes and tees from OpenGolfAPI's detail response (or its /holes and /tees responses merged in). */
+export function ogCourse(detail: Any): { holes: CourseHole[]; tees: CourseTee[]; complete: boolean } {
+  const holes: CourseHole[] = list(detail.holes).map((h, i) => ({ hole: num(h.hole, h.hole_number, h.number, h.num) ?? i + 1, par: num(h.par) ?? 0, hcp: num(h.handicap, h.hcp, h.stroke_index, h.handicap_index) }))
+    .filter((h) => h.par >= 3 && h.par <= 6).sort((a, b) => a.hole - b.hole).map((h) => (h.hcp ? h : { hole: h.hole, par: h.par }))
+  const seen = new Set<string>()
+  const tees: CourseTee[] = list(detail.tees).map((t) => ({
+    name: String(t.name ?? t.tee_name ?? t.color ?? ''), rating: num(t.course_rating, t.rating), slope: num(t.slope_rating, t.slope), totalYards: num(t.total_yards, t.yardage, t.yards, t.total_yardage),
+  })).filter((t) => t.name && (seen.has(t.name) ? false : seen.add(t.name)))
+  return { holes, tees, complete: (holes.length === 9 || holes.length === 18) && holes.every((h, i) => h.hole === i + 1) }
+}
+
+const RANK: Record<string, number> = { golfcourseapi: 3, opengolf: 2, osm: 1 }
+/**
+ * Collapse the same course found by several sources into one row. The row kept is the source with the most detail
+ * (GolfCourseAPI, then OpenGolfAPI, then OpenStreetMap). Twins share a normalised name, or sit within 1.5 km with one name inside the other.
+ */
+export function mergeCandidates(cs: CourseCandidate[]): CourseCandidate[] {
+  const sorted = [...cs].sort((a, b) => (RANK[b.source] ?? 0) - (RANK[a.source] ?? 0))
+  const out: CourseCandidate[] = []
+  for (const c of sorted) {
+    const n = normName(c.name)
+    const twin = out.find((o) => {
+      if (o.source === c.source && o.externalId === c.externalId) return true
+      if (o.source === c.source) return false
+      const m = normName(o.name)
+      if (n === m) return true
+      const near = o.lat != null && o.lon != null && c.lat != null && c.lon != null && distKm(o.lat, o.lon, c.lat, c.lon) < 1.5
+      return near && n.length > 2 && m.length > 2 && (n.includes(m) || m.includes(n))
+    })
+    if (twin) {
+      twin.tags = [...new Set([...(twin.tags ?? [twin.source]), c.source])]
+      if (!(twin.source === c.source && twin.externalId === c.externalId)) (twin.alts ??= []).push({ source: c.source, externalId: c.externalId })
+      twin.lat ??= c.lat; twin.lon ??= c.lon; twin.city ??= c.city; twin.state ??= c.state
+    } else out.push({ ...c, tags: [c.source], alts: [] })
+  }
+  return out
+}
