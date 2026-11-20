@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useHeader } from '../components/Shell'
 import { Sheet } from '../components/Sheet'
 import { floater } from '../lib/floater'
@@ -18,6 +19,10 @@ export default function Settings() {
   )
   return (
     <>
+      <div className="card">
+        <h2>You</h2>
+        <Link className="row" to="/profile?from=Settings|/settings"><div className="grow">Profile<div className="cap">Height, weight, age, miss, limits, goals, clubs. Helps the coach talk to you.</div></div></Link>
+      </div>
       <div className="card">
         <h2>Swing</h2>
         <div className="field"><span className="label">Handedness</span>{choice(s.handedness, [['right', 'Right'], ['left', 'Left']], (v) => updateSettings({ handedness: v }))}</div>

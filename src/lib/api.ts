@@ -1,4 +1,4 @@
-import type { Course, CourseCandidate, R10Shot, Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
+import type { Course, CourseCandidate, Profile, R10Shot, Round, Swing, SwingMetrics, SwingPhase } from '../../shared/types'
 
 export interface Usage {
   retentionDays: number; lastCleanup: string | null
@@ -21,6 +21,8 @@ const json = (method: string, body: unknown): RequestInit => ({
 })
 
 export const api = {
+  profile: () => req<Profile>('/profile'),
+  saveProfile: (p: Profile) => req<Profile>('/profile', json('PUT', p)),
   swings: () => req<Swing[]>('/swings'),
   swing: (id: string) => req<Swing>(`/swings/${id}`),
   createSwing: (b: { club?: string; view?: string; takenAt?: string }) => req<{ id: string }>('/swings', json('POST', b)),

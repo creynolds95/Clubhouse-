@@ -11,6 +11,7 @@ import R10 from './screens/R10'
 import Import from './screens/Import'
 import Courses from './screens/Courses'
 import Settings from './screens/Settings'
+import Profile from './screens/Profile'
 
 export default function App() {
   return (
@@ -26,6 +27,7 @@ export default function App() {
         <Route path="/r10" element={<R10 />} />
         <Route path="/import" element={<Import />} />
         <Route path="/courses" element={<Courses />} />
+        <Route path="/profile" element={<Profile />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="*" element={<div className="empty"><div className="t">Page not found.</div></div>} />
       </Routes>
