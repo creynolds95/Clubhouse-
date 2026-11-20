@@ -144,7 +144,15 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
     .bind(...tokens.map((t) => `%${t}%`)).all<{ source: CourseCandidate['source']; external_id: string; name: string; city: string | null; state: string | null; lat: number; lon: number }>()
   const cs: CourseCandidate[] = results.map((x) => ({ source: x.source, externalId: x.external_id, name: x.name, city: x.city, state: x.state, lat: x.lat, lon: x.lon }))
   info.push(`nearby directory: ${cs.length}`)
-  if (!env.GOLF_COURSE_API_KEY) info.push('GolfCourseAPI: no key set on the Worker')
+  try {
+    const found = await cached(env, `oq:${safe.toLowerCase()}`, 7, async () => ogCandidates(ogRows(await og([`/v1/courses/search?q=${encodeURIComponent(safe)}&limit=25`]))), 1)
+    info.push(`OpenGolfAPI: ${found.length}`)
+    cs.push(...found.filter(matches))
+    await remember(env, found)
+  } catch (e) { info.push(`OpenGolfAPI: ${(e as Error).message}`) }
+  // GolfCourseAPI's free tier is about 35 requests a day, so it is asked only when the free sources found little.
+  if (cs.length >= 3) info.push('GolfCourseAPI: skipped, enough results already')
+  else if (!env.GOLF_COURSE_API_KEY) info.push('GolfCourseAPI: no key set on the Worker')
   else {
     const search = (term: string) => cached(env, `q:${term.toLowerCase()}`, 7, async () =>
       gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(term)}`)) as { courses?: never[] }).courses ?? []), 1)
@@ -158,14 +166,8 @@ export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; 
       info.push(`GolfCourseAPI: ${found.length}`)
       cs.push(...found)
       await remember(env, found)
-    } catch (e) { errors.push((e as Error).message) }
+    } catch (e) { const m = (e as Error).message; info.push(m.includes('429') ? 'GolfCourseAPI: daily limit reached' : m) }
   }
-  try {
-    const found = await cached(env, `oq:${safe.toLowerCase()}`, 7, async () => ogCandidates(ogRows(await og([`/v1/courses/search?q=${encodeURIComponent(safe)}&limit=25`]))), 1)
-    info.push(`OpenGolfAPI: ${found.length}`)
-    cs.push(...found.filter(matches))
-    await remember(env, found)
-  } catch (e) { info.push(`OpenGolfAPI: ${(e as Error).message}`) }
   if (cs.length < 3) {
     try {
       const found = await cached(env, `nq:${safe.toLowerCase()}`, 7, () => nominatim(`${safe} golf`, at ?? { lat: 32.78, lon: -96.8 }, 80), 1)
@@ -267,12 +269,13 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
 }
 
 /** Raw responses from each source, for debugging. Never includes the key. */
-export async function diagnose(env: CourseEnv, q: string, detail = '') {
+export async function diagnose(env: CourseEnv, q: string, detail = '', useGca = false) {
   const probe = async (label: string, url: string, init: RequestInit) => {
     const t = Date.now()
     try {
       const res = await fetch(url, { ...init, signal: AbortSignal.timeout(8_000) })
-      const body = (await res.text()).slice(0, 300)
+      const raw = await res.text()
+      const body = (raw.trimStart().startsWith('<') ? `${raw.match(/<title>([^<]*)/i)?.[1] ?? ''} ${raw.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')}` : raw).slice(0, 400)
       return { label, status: res.status, ms: Date.now() - t, body }
     } catch (e) { return { label, error: (e as Error).message, ms: Date.now() - t } }
   }
@@ -289,9 +292,9 @@ export async function diagnose(env: CourseEnv, q: string, detail = '') {
     return { status: res?.status ?? 'no response', parsed, body: body.slice(0, 2500) }
   }
   return Promise.all([
-    env.GOLF_COURSE_API_KEY
+    env.GOLF_COURSE_API_KEY && useGca
       ? probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })
-      : Promise.resolve({ label: 'golfcourseapi search', error: 'no key set' }),
+      : Promise.resolve({ label: 'golfcourseapi search', error: env.GOLF_COURSE_API_KEY ? 'skipped to save the daily quota. Add &gca=1 to test it' : 'no key set' }),
     probe('opengolfapi near plano', `${OG}/v1/courses/search?lat=33.02&lng=-96.70&radius_mi=25&limit=50`, { headers: { 'user-agent': UA } }),
     probe('opengolfapi name', `${OG}/v1/courses/search?q=${term}&limit=5`, { headers: { 'user-agent': UA } }),
     probe('nominatim', `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&bounded=1&viewbox=-98.0,33.6,-96.0,32.0&q=${term}%20golf`, { headers: { 'user-agent': UA } }),

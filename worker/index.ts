@@ -212,7 +212,7 @@ const point = (c: { req: { query: (k: string) => string | undefined } }) => {
   return Number.isFinite(lat) && Number.isFinite(lon) && c.req.query('lat') ? { lat, lon } : undefined
 }
 app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '', point(c))))
-app.get('/courses/diagnose', async (c) => c.text(JSON.stringify(await diagnose(c.env, c.req.query('q') ?? '', c.req.query('detail') ?? ''), null, 2)))
+app.get('/courses/diagnose', async (c) => c.text(JSON.stringify(await diagnose(c.env, c.req.query('q') ?? '', c.req.query('detail') ?? '', c.req.query('gca') === '1'), null, 2)))
 app.get('/courses/near', async (c) => {
   const at = point(c)
   if (!at) return c.json({ error: 'lat and lon required' }, 400)
