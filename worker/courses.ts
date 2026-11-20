@@ -44,11 +44,15 @@ export const sources = (env: CourseEnv) => ({ osm: true, golfcourseapi: !!env.GO
 
 const DAY = 86_400_000
 /** Read-through cache in D1. Failures are not cached. */
-async function cached<T>(env: CourseEnv, key: string, ttlDays: number, load: () => Promise<T>): Promise<T> {
+async function cached<T>(env: CourseEnv, key: string, ttlDays: number, load: () => Promise<T>, emptyTtlDays = 0): Promise<T> {
+  const isEmpty = (v: unknown) => (Array.isArray(v) ? !v.length : !v)
   const hit = await env.DB.prepare('SELECT value, fetched_at FROM geo_cache WHERE key = ?').bind(key).first<{ value: string; fetched_at: string }>()
-  if (hit && Date.now() - Date.parse(hit.fetched_at) < ttlDays * DAY) return JSON.parse(hit.value) as T
+  if (hit) {
+    const v = JSON.parse(hit.value) as T
+    if (Date.now() - Date.parse(hit.fetched_at) < (isEmpty(v) ? emptyTtlDays : ttlDays) * DAY) return v
+  }
   const value = await load()
-  if (Array.isArray(value) ? !value.length : !value) return value // never cache an empty answer
+  if (isEmpty(value) && !emptyTtlDays) return value // empty answers are only remembered briefly, if at all
   await env.DB.prepare("INSERT INTO geo_cache (key, value, fetched_at) VALUES (?1, ?2, strftime('%Y-%m-%dT%H:%M:%fZ','now')) ON CONFLICT(key) DO UPDATE SET value = ?2, fetched_at = excluded.fetched_at")
     .bind(key, JSON.stringify(value)).run()
   return value
@@ -93,27 +97,39 @@ export async function near(env: CourseEnv, lat: number, lon: number, radiusKm = 
   return { candidates: (await finish(env, cs, { lat, lon })).filter((c) => (c.distanceKm ?? 0) <= r).slice(0, 40), errors }
 }
 
-/** Name search: directory first (instant), GolfCourseAPI on top (cached a week). */
+/** Name search: directory first (instant), GolfCourseAPI on top. Matches on any words typed, partial words included. */
 export async function findOnline(env: CourseEnv, q: string, at?: { lat: number; lon: number }) {
   const errors: string[] = [], info: string[] = []
-  const safe = q.replace(/[^\w ]/g, '').trim()
+  const safe = q.replace(/[^\w ]/g, ' ').replace(/\s+/g, ' ').trim()
   if (safe.length < 3) return { candidates: [] as CourseCandidate[], errors, info }
-  const like = `%${safe.replace(/ /g, '%')}%`
-  const { results } = await env.DB.prepare('SELECT * FROM course_index WHERE name LIKE ? LIMIT 20')
-    .bind(like).all<{ source: CourseCandidate['source']; external_id: string; name: string; city: string | null; state: string | null; lat: number; lon: number }>()
+  const tokens = safe.toLowerCase().split(' ').filter(Boolean)
+  const wordsOf = (c: CourseCandidate) => `${c.name} ${c.city ?? ''}`.toLowerCase().split(/[^a-z0-9]+/)
+  const matches = (c: CourseCandidate) => tokens.every((t) => wordsOf(c).some((w) => w.startsWith(t)))
+
+  const where = tokens.map(() => 'name LIKE ?').join(' AND ')
+  const { results } = await env.DB.prepare(`SELECT * FROM course_index WHERE ${where} LIMIT 20`)
+    .bind(...tokens.map((t) => `%${t}%`)).all<{ source: CourseCandidate['source']; external_id: string; name: string; city: string | null; state: string | null; lat: number; lon: number }>()
   const cs: CourseCandidate[] = results.map((x) => ({ source: x.source, externalId: x.external_id, name: x.name, city: x.city, state: x.state, lat: x.lat, lon: x.lon }))
   info.push(`nearby directory: ${cs.length}`)
   if (!env.GOLF_COURSE_API_KEY) info.push('GolfCourseAPI: no key set on the Worker')
-  if (env.GOLF_COURSE_API_KEY) {
+  else {
+    const search = (term: string) => cached(env, `q:${term.toLowerCase()}`, 7, async () =>
+      gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(term)}`)) as { courses?: never[] }).courses ?? []), 1)
     try {
-      const found = await cached(env, `q:${safe.toLowerCase()}`, 7, async () =>
-        gcaCandidates(((await gca(env, `/search?search_query=${encodeURIComponent(safe)}`)) as { courses?: never[] }).courses ?? []))
+      let found = await search(safe)
+      if (!found.length && tokens.length > 1) {
+        // Their search wants whole words. Try the longest word alone and keep only what matches everything typed.
+        const anchor = [...tokens].sort((a, b) => b.length - a.length)[0]
+        if (anchor.length >= 3) found = (await search(anchor)).filter(matches)
+      }
       info.push(`GolfCourseAPI: ${found.length}`)
       cs.push(...found)
       await remember(env, found)
     } catch (e) { errors.push((e as Error).message) }
   }
-  return { candidates: (await finish(env, cs, at)).slice(0, 30), errors, info }
+  const seen = new Set<string>()
+  const unique = cs.filter((c) => { const k = `${c.source}:${c.externalId}`; return seen.has(k) ? false : (seen.add(k), true) })
+  return { candidates: (await finish(env, unique, at)).slice(0, 30), errors, info }
 }
 
 /** Turn a ZIP or city into a point. */
