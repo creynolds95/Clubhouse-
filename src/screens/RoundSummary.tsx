@@ -6,6 +6,7 @@ import { api, shortDate } from '../lib/api'
 import { summarize } from '../lib/roundSummary'
 import type { Round } from '../../shared/types'
 
+const LOST_COLOR: Record<string, string> = { Putting: 'var(--c-plum)', Penalties: 'var(--c-clay)', 'Off the tee': 'var(--c-navy)', 'Approach and short game': 'var(--c-gold)' }
 const CACHE = 'clubhouse.roundsCache'
 const rd = <T,>(k: string): T | null => { try { return JSON.parse(localStorage.getItem(k) ?? 'null') } catch { return null } }
 /** Keep the finished round and the recent rounds on the phone so the summary opens with no signal. */
@@ -49,7 +50,7 @@ export default function RoundSummary() {
       {s.lost && (
         <div className="card" style={{ marginTop: 12 }}>
           <h2>Where strokes went</h2>
-          <HBars rows={s.lost.map((l) => ({ label: l.label, value: l.shots, note: l.note }))} />
+          <HBars rows={s.lost.map((l) => ({ label: l.label, value: l.shots, note: l.note, color: LOST_COLOR[l.label] }))} />
           <div className="cap" style={{ padding: '0 16px 12px' }}>An estimate from what you entered, not exact strokes gained.</div>
         </div>
       )}
@@ -66,9 +67,9 @@ export default function RoundSummary() {
         <div className="card" style={{ marginTop: 12 }}>
           <h2>Fairways and greens</h2>
           {s.fairway && <><div className="cap" style={{ padding: '0 16px' }}>Fairways · {s.fairway.hit} of {s.fairway.n}</div>
-            <Split parts={[{ label: 'Left', value: s.fairway.left, color: 'var(--flag)' }, { label: 'Hit', value: s.fairway.hit, color: 'var(--fairway)' }, { label: 'Right', value: s.fairway.right, color: 'var(--brass)' }]} /></>}
+            <Split parts={[{ label: 'Left', value: s.fairway.left, color: 'var(--c-navy)' }, { label: 'Hit', value: s.fairway.hit, color: 'var(--c-green)' }, { label: 'Right', value: s.fairway.right, color: 'var(--c-gold)' }]} /></>}
           {s.gir && <><div className="cap" style={{ padding: '0 16px' }}>Greens in regulation · {s.gir.yes} of {s.gir.n}</div>
-            <Split parts={[{ label: 'Hit', value: s.gir.yes, color: 'var(--fairway)' }, { label: 'Missed', value: s.gir.no, color: 'var(--flag)' }]} /></>}
+            <Split parts={[{ label: 'Hit', value: s.gir.yes, color: 'var(--c-green)' }, { label: 'Missed', value: s.gir.no, color: 'var(--c-clay)' }]} /></>}
         </div>
       )}
 

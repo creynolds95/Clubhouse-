@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useEffect } from 'react'
 import { useActivePlay } from '../lib/play'
 import { clubNotes } from '../lib/clubNotes'
+import { clubGroup } from '../lib/clubInsights'
 import { NoteList } from '../components/NoteList'
 import { useHeader } from '../components/Shell'
 import { Icon } from '../components/Icon'
@@ -68,7 +69,7 @@ export default function Home() {
             <thead><tr><th>Club</th><th>Carry</th><th>± Spread</th><th>Shots</th></tr></thead>
             <tbody>
               {clubs.slice(0, 6).map((c) => (
-                <tr key={c.club}><td>{c.club}</td><td>{c.carry}</td><td className={c.spread == null ? 'dim' : ''}>{c.spread == null ? '—' : `±${c.spread}`}</td><td className="dim">{c.n}</td></tr>
+                <tr key={c.club}><td><span aria-hidden style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 4, background: clubGroup(c.club).color, marginRight: 8 }} />{c.club}</td><td>{c.carry}</td><td className={c.spread == null ? 'dim' : ''}>{c.spread == null ? '—' : `±${c.spread}`}</td><td className="dim">{c.n}</td></tr>
               ))}
             </tbody>
           </table>
@@ -109,7 +110,7 @@ export default function Home() {
       ) : (
         <Link to="/play?from=Home|/" className="btn block" style={{ marginBottom: 12 }}>Play a round</Link>
       )}
-      <NoteList notes={clubNotes(H).filter((n) => n.tone !== 'info' || n.id.startsWith('stale'))} limit={2} />
+      <NoteList notes={clubNotes(H).filter((n) => n.tone === 'caution' || n.id.startsWith('stale'))} limit={2} />
       <div className="dash">{order.filter((t) => !s.tilesOff.includes(t.id)).map((t) => tiles[t.id])}</div>
       {custom && (
         <Sheet title="Customize" onClose={() => setCustom(false)}>

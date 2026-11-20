@@ -147,7 +147,7 @@ export default function Play() {
         <Sheet title="All holes" onClose={() => setGrid(false)}>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '4px 16px 16px' }}>
             {s.holes.map((x, i) => (
-              <button key={x.hole} className="btn" style={{ minHeight: 72, flexDirection: 'column', gap: 2, outline: i === s.idx ? '3px solid var(--brass)' : undefined, background: x.strokes ? 'var(--sand)' : undefined, opacity: x.strokes || i === s.idx ? 1 : 0.7 }}
+              <button key={x.hole} className="btn" style={{ minHeight: 72, flexDirection: 'column', gap: 2, outline: i === s.idx ? '3px solid var(--brass)' : undefined, background: x.strokes ? 'var(--tint)' : undefined, opacity: x.strokes || i === s.idx ? 1 : 0.7 }}
                 onClick={() => { go(i); setGrid(false) }}>
                 <span style={{ fontSize: 13, color: 'var(--muted)' }}>H{x.hole} · Par {x.par}</span>
                 <span style={{ fontSize: 28, fontWeight: 800 }}>{x.strokes || '–'}</span>
