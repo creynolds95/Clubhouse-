@@ -61,7 +61,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
     try { choose(await api.geocode(where)); setWhere('') } catch (e) { setNote((e as Error).message) }
   }
   const take = async (c: CourseCandidate) => {
-    if (c.savedId) { const hit = local.data?.find((x) => x.id === c.savedId) ?? (await api.courses('')).find((x) => x.id === c.savedId); if (hit) { onPick(hit); onClose(); return } }
+    if (c.savedId) { const hit = local.data?.find((x) => x.id === c.savedId) ?? (await api.courses('')).find((x) => x.id === c.savedId); if (hit && !hit.unverified) { onPick(hit); onClose(); return } }
     setBusy(true)
     try { onPick(await api.importCourse(c)); onClose() }
     catch (e) { floater.set({ text: `Couldn't load that course. ${(e as Error).message}`, busy: false, error: true }) }
@@ -75,7 +75,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
       <Sheet title="Course" tall onClose={onClose}>
         <div className="field"><input placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" /></div>
         {local.data?.map((c) => (
-          <button key={c.id} className="row" style={rowStyle} onClick={() => { onPick(c); onClose() }}>
+          <button key={c.id} className="row" style={rowStyle} onClick={async () => { if (c.unverified) { setBusy(true); try { c = await api.refreshCourse(c.id) } catch { /* keep the saved card */ } setBusy(false) } onPick(c); onClose() }}>
             <div className="grow">{c.name}<div className="cap">{[c.city, `${c.holes.length} holes · par ${parOf(c)}`, c.unverified ? 'check pars' : null].filter(Boolean).join(' · ')}</div></div>
           </button>
         ))}

@@ -196,10 +196,23 @@ export async function geocode(env: CourseEnv, q: string) {
 }
 
 export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<Course> {
-  const refs = [{ source: c.source, externalId: c.externalId }, ...(c.alts ?? [])]
+  let refs = [{ source: c.source, externalId: c.externalId }, ...(c.alts ?? [])]
+  if (refs.length === 1) {
+    // Saved or hand-picked on its own: look for the same course in the other sources by name.
+    const term = encodeURIComponent(c.name.replace(/[^\w ]/g, ' ').replace(/\s+/g, ' ').trim())
+    const [g, o] = await Promise.all([
+      c.source !== 'golfcourseapi' && env.GOLF_COURSE_API_KEY ? gca(env, `/search?search_query=${term}`).then((r) => gcaCandidates(((r as { courses?: never[] }).courses ?? []))).catch(() => []) : [],
+      c.source !== 'opengolf' ? og([`/v1/courses/search?q=${term}&limit=10`]).then((r) => ogCandidates(ogRows(r))).catch(() => []) : [],
+    ])
+    const merged = mergeCandidates([c, ...g, ...o]).find((m) => m.tags?.includes(c.source) && [m, ...(m.alts ?? [])].some((x) => x.source === c.source && x.externalId === c.externalId))
+    if (merged) refs = [{ source: merged.source, externalId: merged.externalId }, ...(merged.alts ?? [])]
+  }
+  // A saved course is reused only once its pars are verified. Unverified ones (pars set to 4) are re-fetched below.
+  let stale: Row | null = null
   for (const r of refs) {
     const existing = await env.DB.prepare('SELECT * FROM courses WHERE source = ? AND external_id = ?').bind(r.source, r.externalId).first<Row>()
-    if (existing) return toCourse(existing)
+    if (existing && !existing.unverified) return toCourse(existing)
+    if (existing) stale ??= existing
   }
 
   let holes: Course['holes'] = [], tees: Course['tees'] = [], complete = false, from = c.source
@@ -241,6 +254,12 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
   const n = complete && holes.length === 9 ? 9 : 18 // 18 unless a source confirms a full 9-hole card
   const byHole = new Map(holes.map((h) => [h.hole, h]))
   const filled = Array.from({ length: n }, (_, i) => byHole.get(i + 1) ?? { hole: i + 1, par: 4 })
+  if (stale) {
+    // Re-fetch of an unverified save: replace its card only if we now have a complete one.
+    if (!complete) return toCourse(stale)
+    await env.DB.prepare('UPDATE courses SET holes = ?, tees = ?, unverified = 0 WHERE id = ?').bind(JSON.stringify(filled), JSON.stringify(tees), stale.id).run()
+    return { ...toCourse(stale), holes: filled, tees, unverified: false }
+  }
   const course: Course = { id: crypto.randomUUID(), name: c.name, city: c.city, state: c.state, source: c.source, holes: filled, tees, unverified: !complete }
   await env.DB.prepare('INSERT INTO courses (id, name, city, state, source, external_id, holes, tees, unverified, lat, lon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
     .bind(course.id, course.name, course.city, course.state, course.source, c.externalId, JSON.stringify(course.holes), JSON.stringify(course.tees), course.unverified ? 1 : 0, c.lat ?? null, c.lon ?? null).run()
@@ -248,7 +267,7 @@ export async function importCourse(env: CourseEnv, c: CourseCandidate): Promise<
 }
 
 /** Raw responses from each source, for debugging. Never includes the key. */
-export async function diagnose(env: CourseEnv, q: string) {
+export async function diagnose(env: CourseEnv, q: string, detail = '') {
   const probe = async (label: string, url: string, init: RequestInit) => {
     const t = Date.now()
     try {
@@ -260,6 +279,15 @@ export async function diagnose(env: CourseEnv, q: string) {
   const name = (q || 'pecan').replace(/[^\w ]/g, '')
   const term = encodeURIComponent(name)
   const query = `[out:json][timeout:20];nwr["leisure"="golf_course"]["name"~"${name}",i](32.0,-98.0,33.6,-96.0);out tags center 5;`
+  if (detail && env.GOLF_COURSE_API_KEY) {
+    // One GolfCourseAPI course card, to see what the hole and tee data looks like.
+    const id = encodeURIComponent(detail.replace(/[^\w-]/g, ''))
+    const res = await fetch(`${GCA}/courses/${id}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA }, signal: AbortSignal.timeout(8_000) }).catch(() => null)
+    const body = res ? await res.text() : ''
+    let parsed: unknown = null
+    try { const j = JSON.parse(body); parsed = gcaCourse((j.course ?? j) as never) } catch { /* not JSON */ }
+    return { status: res?.status ?? 'no response', parsed, body: body.slice(0, 2500) }
+  }
   return Promise.all([
     env.GOLF_COURSE_API_KEY
       ? probe('golfcourseapi search', `${GCA}/search?search_query=${term}`, { headers: { authorization: `Bearer ${env.GOLF_COURSE_API_KEY}`, 'user-agent': UA } })

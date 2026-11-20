@@ -43,6 +43,7 @@ export const api = {
     req<{ candidates: CourseCandidate[]; errors: string[]; info?: string[] }>(`/courses/find?q=${encodeURIComponent(q)}${at ? `&lat=${at.lat}&lon=${at.lon}` : ''}`),
   nearCourses: (at: { lat: number; lon: number }) => req<{ candidates: CourseCandidate[]; errors: string[] }>(`/courses/near?lat=${at.lat}&lon=${at.lon}`),
   geocode: (q: string) => req<{ label: string; lat: number; lon: number }>(`/courses/geocode?q=${encodeURIComponent(q)}`),
+  refreshCourse: (id: string) => req<Course>(`/courses/${id}/refresh`, json('POST', {})),
   importCourse: (c: CourseCandidate) => req<Course>('/courses/import', json('POST', c)),
   saveCourse: (c: Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'> & { id?: string }) =>
     c.id ? req<void>(`/courses/${c.id}`, json('PUT', c)).then(() => c.id!) : req<{ id: string }>('/courses', json('POST', c)).then((r) => r.id),
