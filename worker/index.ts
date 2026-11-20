@@ -212,7 +212,7 @@ const point = (c: { req: { query: (k: string) => string | undefined } }) => {
   return Number.isFinite(lat) && Number.isFinite(lon) && c.req.query('lat') ? { lat, lon } : undefined
 }
 app.get('/courses/find', async (c) => c.json(await findOnline(c.env, c.req.query('q') ?? '', point(c))))
-app.get('/courses/diagnose', async (c) => c.text(JSON.stringify(await diagnose(c.env, c.req.query('q') ?? ''), null, 2)))
+app.get('/courses/diagnose', async (c) => c.text(JSON.stringify(await diagnose(c.env, c.req.query('q') ?? '', c.req.query('detail') ?? ''), null, 2)))
 app.get('/courses/near', async (c) => {
   const at = point(c)
   if (!at) return c.json({ error: 'lat and lon required' }, 400)
@@ -221,6 +221,13 @@ app.get('/courses/near', async (c) => {
 app.get('/courses/geocode', async (c) => {
   try { return c.json(await geocode(c.env, c.req.query('q') ?? '')) }
   catch (e) { return c.json({ error: (e as Error).message }, 404) }
+})
+app.post('/courses/:id/refresh', async (c) => {
+  const r = await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(c.req.param('id')).first<{ source: string; external_id: string | null; name: string; city: string | null; state: string | null; lat: number | null; lon: number | null }>()
+  if (!r) return c.json({ error: 'Not found' }, 404)
+  if (r.source === 'manual' || !r.external_id) return c.json(toCourse(await c.env.DB.prepare('SELECT * FROM courses WHERE id = ?').bind(c.req.param('id')).first() as never))
+  try { return c.json(await importCourse(c.env, { source: r.source as CourseCandidate['source'], externalId: r.external_id, name: r.name, city: r.city, state: r.state, ...(r.lat != null && r.lon != null ? { lat: r.lat, lon: r.lon } : {}) })) }
+  catch (e) { return c.json({ error: (e as Error).message }, 502) }
 })
 app.post('/courses/import', async (c) => {
   try { return c.json(await importCourse(c.env, await c.req.json<CourseCandidate>()), 201) }
