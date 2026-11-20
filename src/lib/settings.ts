@@ -8,7 +8,7 @@ export interface Settings {
   tileOrder: string[]
   tilesOff: string[]
 }
-const DEFAULTS: Settings = { handedness: 'right', defaultView: 'down_the_line', theme: 'system', look: 'classic', tileOrder: [], tilesOff: [] }
+const DEFAULTS: Settings = { handedness: 'right', defaultView: 'down_the_line', theme: 'system', look: 'ivory', tileOrder: [], tilesOff: [] }
 const KEY = 'clubhouse.settings'
 const subs = new Set<() => void>()
 
