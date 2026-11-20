@@ -48,7 +48,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
     setNote('Finding you…')
     if (!navigator.geolocation) return setNote('Location isn’t available here. Enter a ZIP or city.')
     navigator.geolocation.getCurrentPosition(
-      (p) => choose({ label: 'Near you', lat: p.coords.latitude, lon: p.coords.longitude }),
+      (p) => choose({ label: 'you', lat: p.coords.latitude, lon: p.coords.longitude }),
       () => { setNote('Location is off for this app. Enter a ZIP or city instead.'); setChanging(true) },
       { timeout: 10_000, maximumAge: 600_000 },
     )
@@ -69,7 +69,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
 
   return (
     <>
-      <Sheet title="Course" onClose={onClose}>
+      <Sheet title="Course" tall onClose={onClose}>
         <div className="field"><input placeholder="Search by name" value={q} onChange={(e) => setQ(e.target.value)} enterKeyHint="search" /></div>
         {local.data?.map((c) => (
           <button key={c.id} className="row" style={rowStyle} onClick={() => { onPick(c); onClose() }}>
@@ -79,7 +79,7 @@ export function CoursePicker({ onPick, onClose }: { onPick: (c: Course) => void;
         {local.data && !local.data.length && searchOn && <div className="note">No saved course matches “{dq}”.</div>}
 
         <div className="row" style={{ borderTop: '1px solid var(--line)' }}>
-          <div className="grow" style={{ minWidth: 0 }}><span className="label">{searchOn ? 'Online matches' : `Near ${area.label}`}</span></div>
+          <div className="grow" style={{ minWidth: 0 }}><span className="label">{searchOn ? 'Online matches' : `Near ${area.label.replace(/^Near /, '')}`}</span></div>
           <button className="txt quiet" style={{ background: 'none', border: 0, color: 'var(--accent)', minHeight: 44, padding: '0 8px' }} onClick={useMyLocation}>Use my location</button>
           <button className="txt quiet" style={{ background: 'none', border: 0, color: 'var(--accent)', minHeight: 44, padding: '0 8px' }} onClick={() => setChanging((v) => !v)}>Change</button>
         </div>

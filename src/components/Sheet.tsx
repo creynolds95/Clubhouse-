@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 
 /** Bottom sheet (UX guide §6). Form sheets: Cancel · Title · Save. Dismiss: Esc, dim tap, drag header down. */
-export function Sheet({ title, onClose, onSave, saveLabel = 'Save', saveDisabled, children }: {
-  title: string; onClose: () => void; onSave?: () => void; saveLabel?: string; saveDisabled?: boolean; children: ReactNode
+export function Sheet({ title, onClose, onSave, saveLabel = 'Save', saveDisabled, tall, children }: {
+  tall?: boolean; title: string; onClose: () => void; onSave?: () => void; saveLabel?: string; saveDisabled?: boolean; children: ReactNode
 }) {
   const [leaving, setLeaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
@@ -35,10 +36,11 @@ export function Sheet({ title, onClose, onSave, saveLabel = 'Save', saveDisabled
     else { ref.current.style.transition = 'transform .3s var(--ease)'; ref.current.style.transform = ''; setTimeout(() => ref.current && (ref.current.style.transition = ''), 300) }
   }
 
-  return (
+  // Portal to <body>: inside the page container a transformed ancestor would pin position:fixed to that box, leaving the tab bar showing.
+  return createPortal(
     <>
       <div className={`sheet-dim${leaving ? ' leaving' : ''}`} onClick={close} />
-      <div ref={ref} className={`sheet${leaving ? ' leaving' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
+      <div ref={ref} className={`sheet${tall ? ' tall' : ''}${leaving ? ' leaving' : ''}`} role="dialog" aria-modal="true" aria-label={title}>
         <header onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp}>
           {onSave ? <button className="txt quiet" onClick={close}>Cancel</button> : <span />}
           <h3>{title}</h3>
@@ -50,6 +52,7 @@ export function Sheet({ title, onClose, onSave, saveLabel = 'Save', saveDisabled
         </header>
         <div className="body">{children}</div>
       </div>
-    </>
+    </>,
+    document.body,
   )
 }
