@@ -4,25 +4,25 @@ import { clubGroup, clubInsights } from '../lib/clubInsights'
 import { clubNotes, gapNotes, type Note } from '../lib/clubNotes'
 import { NoteList } from './NoteList'
 
-interface Row { club: string; carry: number; total: number | null }
+interface Row { club: string; carry: number; total: number | null; n?: number }
 const KEY = 'clubhouse.distances'
 const NKEY = 'clubhouse.notes'
 const cachedNotes = (): Note[] => { try { return JSON.parse(localStorage.getItem(NKEY) ?? '[]') } catch { return [] } }
-const cached = (): Row[] => { try { return JSON.parse(localStorage.getItem(KEY) ?? '[]') } catch { return [] } }
+const cached = (key = KEY): Row[] => { try { return JSON.parse(localStorage.getItem(key) ?? '[]') } catch { return [] } }
 
 /** Rangefinder helper: enter the yardage, get the club that fits from the player's own carry numbers, with a shorter and a longer option. Big type for sun. Cached on the phone for no-signal use. */
-export function DistanceChart({ autoFocus }: { autoFocus?: boolean }) {
-  const [rows, setRows] = useState<Row[]>(cached)
+export function DistanceChart({ autoFocus, lookup = true }: { autoFocus?: boolean; lookup?: boolean }) {
+  const [rows, setRows] = useState<Row[]>(() => cached(lookup ? KEY : `${KEY}-all`))
   const [yd, setYd] = useState('')
   const [notes, setNotes] = useState<Note[]>(cachedNotes)
   const [stale, setStale] = useState(false)
   useEffect(() => {
     api.r10Shots().then((s) => {
-      const r = clubInsights(s).map((c) => ({ club: c.club, carry: c.carry, total: c.total }))
+      const r = clubInsights(s, lookup ? 3 : 1).map((c) => ({ club: c.club, carry: c.carry, total: c.total, n: c.n }))
       if (r.length) {
         const n = [...clubNotes(s), ...gapNotes(clubInsights(s))]
         setRows(r); setNotes(n); setStale(false)
-        try { localStorage.setItem(KEY, JSON.stringify(r)); localStorage.setItem(NKEY, JSON.stringify(n)) } catch { /* private mode */ }
+        try { localStorage.setItem(lookup ? KEY : `${KEY}-all`, JSON.stringify(r)); localStorage.setItem(NKEY, JSON.stringify(n)) } catch { /* private mode */ }
       }
     }).catch(() => setStale(true))
   }, [])
@@ -46,24 +46,26 @@ export function DistanceChart({ autoFocus }: { autoFocus?: boolean }) {
   )
   return (
     <>
-      <div className="field"><span className="label">Rangefinder yardage (optional)</span>
+      {lookup && <div className="field"><span className="label">Rangefinder yardage</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" style={{ minHeight: 64, minWidth: 64, fontSize: 22 }} onClick={() => step(-5)}>−5</button>
           <input inputMode="numeric" autoFocus={autoFocus} placeholder="145" value={yd} onChange={(e) => setYd(e.target.value.replace(/\D/g, '').slice(0, 3))} style={{ fontSize: 40, fontWeight: 800, minHeight: 64, textAlign: 'center', flex: 1, minWidth: 0 }} />
           <button className="btn" style={{ minHeight: 64, minWidth: 64, fontSize: 22 }} onClick={() => step(5)}>+5</button>
-        </div></div>
+        </div></div>}
       {pick && <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', padding: '0 16px 12px' }}>{card('Take', pick.normal, true)}{card('Shorter', pick.shorter)}{card('Longer', pick.longer)}</div>}
       {pick && <NoteList notes={notes.filter((n) => n.club && [pick.shorter?.club, pick.normal.club, pick.longer?.club].includes(n.club)).sort((a, b) => (a.tone === 'caution' ? 0 : 1) - (b.tone === 'caution' ? 0 : 1))} limit={4} />}
       <div className="card">
-        <div className="row"><div className="grow cap">All clubs</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Carry</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Total</div></div>
+        <div className="row"><div className="grow cap">All clubs</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Carry</div><div className="cap" style={{ width: 72, textAlign: 'right' }}>Total</div>{!lookup && <div className="cap" style={{ width: 56, textAlign: 'right' }}>Shots</div>}</div>
         {[...asc].reverse().map((r) => (
           <div key={r.club} className="row" style={{ minHeight: 52, background: pick?.normal.club === r.club ? 'var(--tint)' : undefined }}>
             <div className="grow" style={{ fontSize: 20 }}><span aria-hidden style={{ display: 'inline-block', width: 10, height: 10, borderRadius: 5, background: clubGroup(r.club).color, marginRight: 10 }} />{r.club}</div>
             <div style={{ width: 72, textAlign: 'right', fontSize: 22, fontWeight: 700 }}>{r.carry}</div>
             <div style={{ width: 72, textAlign: 'right', fontSize: 18, color: 'var(--muted)' }}>{r.total ?? '—'}</div>
+            {!lookup && <div style={{ width: 56, textAlign: 'right', fontSize: 15, color: (r.n ?? 0) < 3 ? 'var(--c-clay)' : 'var(--muted)' }}>{r.n ?? '—'}</div>}
           </div>
         ))}
       </div>
+      {!lookup && asc.some((r) => (r.n ?? 99) < 3) && <div className="note">Red shot counts are under 3 shots, so treat those distances as rough.</div>}
       {stale && <div className="note">Showing the numbers saved on this phone.</div>}
     </>
   )
