@@ -98,7 +98,7 @@ input, select, textarea { font-size: 16px; }
 .content { max-width: 40rem; margin: 0 auto; padding: 16px; }
 
 .tabbar { display: flex; background: var(--surface); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
-html.kb .tabbar { display: none; }
+html.kb .tabbar, .tabbar[hidden] { display: none; }
 html.kb { --sa: 0; }
 .tabbar a { flex: 1; min-height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; color: var(--muted); text-decoration: none; font-size: 11px; letter-spacing: .04em; }
 .tabbar a[aria-current="page"] { color: var(--accent); }

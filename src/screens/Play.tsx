@@ -108,40 +108,63 @@ export default function Play() {
     )
   }
 
-  return (
-    <>
-      <div style={{ padding: '4px 16px 0' }}>
-        <div style={{ fontSize: 44, fontWeight: 800, lineHeight: 1 }}>Par {h.par}</div>
-        <div className="cap" style={{ fontSize: 16, color: 'var(--muted)' }}>{[yds && `${yds} yd`, hcp && `Hcp ${hcp}`, s.tee, `${total || 0} so far`].filter(Boolean).join(' · ')}</div>
-        {!yds && <div className="cap" style={{ color: 'var(--muted)' }}>No yardage for this hole</div>}
+  const row: React.CSSProperties = { padding: '0 16px', marginTop: 8 }
+  const lab: React.CSSProperties = { fontSize: 11, letterSpacing: '.08em', textTransform: 'uppercase', color: 'var(--muted)', marginBottom: 4, display: 'block' }
+  const chip = (on: boolean, label: React.ReactNode, onClick: () => void, extra?: React.CSSProperties) => (
+    <button className="chip" style={{ flex: 1, minHeight: 46, justifyContent: 'center', ...extra }} aria-pressed={on} onClick={onClick}>{label}</button>
+  )
+  const mini = (label: string, value: number | undefined, onChange: (n: number | undefined) => void, min: number, max: number, empty: string) => (
+    <div style={{ flex: 1 }}>
+      <span style={lab}>{label}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <button className="btn" style={{ minHeight: 52, width: 52, padding: 0, fontSize: 26, fontWeight: 700 }} aria-label={`${label} minus`} onClick={() => onChange(value == null || value <= min ? undefined : value - 1)}>−</button>
+        <div style={{ flex: 1, textAlign: 'center', fontSize: 30, fontWeight: 700 }}>{value == null ? empty : value}</div>
+        <button className="btn" style={{ minHeight: 52, width: 52, padding: 0, fontSize: 26, fontWeight: 700 }} aria-label={`${label} plus`} onClick={() => onChange(Math.min(max, (value ?? min - 1) + 1))}>+</button>
       </div>
-      <Stepper label="Putts" value={h.putts} onChange={(n) => set({ putts: n })} />
+    </div>
+  )
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', margin: -16, minHeight: 'calc(var(--vv-h) - 64px - env(safe-area-inset-top))' }}>
+      <div style={{ padding: '16px 16px 0', display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ fontSize: 40, fontWeight: 800, lineHeight: 1 }}>Par {h.par}</div>
+        <div style={{ textAlign: 'right', fontSize: 14, color: 'var(--muted)' }}>
+          <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--text)' }}>{yds ? `${yds} yd` : 'No yardage'}</div>
+          {[hcp && `Hcp ${hcp}`, `${total || 0} so far`].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <div style={{ ...row, display: 'flex', gap: 16 }}>
+        {mini('Putts', h.putts, (n) => set({ putts: n }), 0, 15, '—')}
+        {mini('Penalties', h.penalties, (n) => set({ penalties: n }), 0, 6, '0')}
+      </div>
       {h.par >= 4 && (
-        <div className="field"><span className="label">Fairway</span>
-          <div className="chips">{(['left', 'hit', 'right'] as const).map((f) => <button key={f} className="chip" style={{ flex: 1, minHeight: 52 }} aria-pressed={h.fairway === f} onClick={() => set({ fairway: h.fairway === f ? undefined : f })}>{f === 'hit' ? 'Fairway' : f === 'left' ? '← Left' : 'Right →'}</button>)}</div></div>
+        <div style={row}><span style={lab}>Fairway</span>
+          <div className="chips" style={{ flexWrap: 'nowrap' }}>{(['left', 'hit', 'right'] as const).map((f) => chip(h.fairway === f, f === 'hit' ? 'Fairway' : f === 'left' ? '← Left' : 'Right →', () => set({ fairway: h.fairway === f ? undefined : f })))}</div></div>
       )}
-      <div className="field"><span className="label">Green in regulation{h.gir == null && girAuto != null ? ' (worked out)' : ''}</span>
-        <div className="chips">{([[true, 'Yes'], [false, 'No']] as const).map(([v, l]) => <button key={l} className="chip" style={{ flex: 1, minHeight: 52 }} aria-pressed={gir === v} onClick={() => set({ gir: h.gir === v ? undefined : v })}>{l}</button>)}</div></div>
-      {gir === false && (
-        <div className="field"><span className="label">Up and down?</span>
-          <div className="chips">{([[true, 'Made it'], [false, 'No']] as const).map(([v, l]) => <button key={l} className="chip" style={{ flex: 1, minHeight: 52 }} aria-pressed={h.upDown === v} onClick={() => set({ upDown: h.upDown === v ? undefined : v })}>{l}</button>)}</div></div>
-      )}
-      <Stepper label="Penalties" value={h.penalties} onChange={(n) => set({ penalties: n })} max={6} empty="0" />
-      <div className="field"><span className="label">Score · tap to save and move on</span>
-        <div className="chips">
+      <div style={row}><span style={lab}>{gir === false ? 'Missed green · up and down?' : `Green in regulation${h.gir == null && girAuto != null ? ' (worked out)' : ''}`}</span>
+        <div className="chips" style={{ flexWrap: 'nowrap' }}>
+          {([[true, 'Yes'], [false, 'No']] as const).map(([v, l]) => chip(gir === v, l, () => set({ gir: h.gir === v ? undefined : v })))}
+          {gir === false && ([[true, 'Got it'], [false, 'Missed']] as const).map(([v, l]) => chip(h.upDown === v, l, () => set({ upDown: h.upDown === v ? undefined : v }), { flex: 1 }))}
+        </div></div>
+      <div style={{ ...row, flex: '1 1 auto', display: 'flex', flexDirection: 'column', maxHeight: 280 }}><span style={lab}>Score · tap to save and move on</span>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridAutoRows: 'minmax(56px, 1fr)', gap: 8, flex: 1 }}>
           {([['Eagle', -2], ['Birdie', -1], ['Par', 0], ['Bogey', 1], ['Double', 2], ['Triple', 3]] as const).map(([l, d]) => (
-            <button key={l} className="chip" style={{ flex: '1 0 30%', minHeight: 56, fontSize: 18 }} aria-pressed={h.strokes === h.par + d && h.par + d > 0}
+            <button key={l} className="chip" style={{ fontSize: 18, justifyContent: 'center' }} aria-pressed={h.strokes === h.par + d && h.par + d > 0}
               onClick={() => { const first = h.strokes === 0; set({ strokes: Math.max(1, h.par + d) }); if (first && s.idx < s.count - 1) setTimeout(() => go(s.idx + 1), 250) }}>{l}<span style={{ opacity: 0.6, marginLeft: 6 }}>{Math.max(1, h.par + d)}</span></button>
           ))}
         </div></div>
-      <Stepper label="Other score" value={h.strokes || undefined} onChange={(n) => set({ strokes: n ?? 0 })} min={1} />
-      <div style={{ position: 'sticky', bottom: 0, padding: '10px 16px', background: 'var(--bg)', borderTop: '1px solid var(--line)', display: 'flex', gap: 10, zIndex: 5 }}>
-        <button className="btn" style={{ ...big, fontSize: 20, flex: '0 0 auto', minWidth: 64 }} aria-label="Previous hole" disabled={s.idx === 0} onClick={() => go(s.idx - 1)}>‹</button>
-        <button className="btn" style={{ ...big, fontSize: 20 }} onClick={() => setChart(true)}>Yards</button>
-        {s.idx < s.count - 1 ? <button className="btn primary" style={{ ...big, fontSize: 20 }} onClick={() => go(s.idx + 1)}>Next ›</button> : <button className="btn primary" style={{ ...big, fontSize: 20 }} onClick={() => setDone(true)}>Finish</button>}
+      <div style={{ ...row, display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{ ...lab, margin: 0, flex: 1 }}>Other score</span>
+        <button className="btn" style={{ minHeight: 48, width: 56, padding: 0, fontSize: 24 }} aria-label="Score minus" onClick={() => set({ strokes: h.strokes <= 1 ? 0 : h.strokes - 1 })}>−</button>
+        <div style={{ width: 44, textAlign: 'center', fontSize: 26, fontWeight: 700 }}>{h.strokes || '—'}</div>
+        <button className="btn" style={{ minHeight: 48, width: 56, padding: 0, fontSize: 24 }} aria-label="Score plus" onClick={() => set({ strokes: Math.min(15, (h.strokes || 0) + 1) })}>+</button>
       </div>
-      <div style={{ padding: '8px 16px 24px', display: 'grid', gap: 10 }}>
-        <button className="btn block" onClick={() => setDone(true)}>End round</button>
+      <div style={{ flex: 1, minHeight: 4 }} />
+      <div style={{ position: 'sticky', bottom: 0, padding: '10px 16px calc(10px + env(safe-area-inset-bottom))', background: 'var(--bg)', borderTop: '1px solid var(--line)', display: 'flex', gap: 8, zIndex: 5 }}>
+        <button className="btn" style={{ ...big, fontSize: 20, flex: '0 0 auto', minWidth: 56, minHeight: 56 }} aria-label="Previous hole" disabled={s.idx === 0} onClick={() => go(s.idx - 1)}>‹</button>
+        <button className="btn" style={{ ...big, fontSize: 18, minHeight: 56 }} onClick={() => setChart(true)}>Yards</button>
+        <button className="btn" style={{ ...big, fontSize: 16, minHeight: 56, flex: '0 0 auto', padding: '0 14px' }} onClick={() => setDone(true)}>End</button>
+        {s.idx < s.count - 1 ? <button className="btn primary" style={{ ...big, fontSize: 20, minHeight: 56, flex: 1.3 }} onClick={() => go(s.idx + 1)}>Next ›</button> : <button className="btn primary" style={{ ...big, fontSize: 20, minHeight: 56, flex: 1.3 }} onClick={() => setDone(true)}>Finish</button>}
       </div>
       {grid && (
         <Sheet title="All holes" onClose={() => setGrid(false)}>
@@ -158,6 +181,6 @@ export default function Play() {
         </Sheet>
       )}
       {chart && <Sheet title="Club for the yardage" tall onClose={() => setChart(false)}><DistanceChart autoFocus /></Sheet>}
-    </>
+    </div>
   )
 }
