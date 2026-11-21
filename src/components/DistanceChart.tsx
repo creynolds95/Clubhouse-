@@ -65,7 +65,6 @@ export function DistanceChart({ autoFocus, lookup = true }: { autoFocus?: boolea
           </div>
         ))}
       </div>
-      {!lookup && asc.some((r) => (r.n ?? 99) < 3) && <div className="note">Red shot counts are under 3 shots, so treat those distances as rough.</div>}
       {stale && <div className="note">Showing the numbers saved on this phone.</div>}
     </>
   )
