@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Link, useNavigate, useSearchParams } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../components/Shell'
 import { Sheet } from '../components/Sheet'
 import { Icon } from '../components/Icon'
 import { api, frameSrc, shortDate } from '../lib/api'
 import { useData } from '../lib/useData'
 import { useSettings } from '../lib/settings'
-import { processSwing } from '../lib/upload'
+import { bulk } from '../lib/bulk'
 
 export const CLUBS = ['Driver', '3W', '5W', 'Hybrid', '4i', '5i', '6i', '7i', '8i', '9i', 'PW', 'GW', 'SW', 'LW']
 
@@ -15,6 +15,7 @@ export default function Swings() {
   const [adding, setAdding] = useState(params.get('new') === '1')
   useHeader({ title: 'Swings', right: <button className="iconbtn" aria-label="Add swing" onClick={() => setAdding(true)}><Icon name="plus" /></button> })
   const { data, loading, error, reload } = useData(api.swings)
+  useEffect(() => bulk.onItemDone(reload), [reload])
   useEffect(() => { if (params.get('new')) setParams({}, { replace: true }) }, [params, setParams])
 
   return (
@@ -38,33 +39,50 @@ export default function Swings() {
             ))}
           </div>
         )}
-      {adding && <AddSwing onClose={() => setAdding(false)} onSaved={reload} />}
+      {adding && <AddSwing onClose={() => setAdding(false)} />}
     </>
   )
 }
 
-function AddSwing({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
+function AddSwing({ onClose }: { onClose: () => void }) {
   const settings = useSettings()
-  const [club, setClub] = useState<string>('7i')
+  const [files, setFiles] = useState<{ file: File; club: string }[]>([])
   const [view, setView] = useState(settings.defaultView)
-  const [file, setFile] = useState<File | null>(null)
   const input = useRef<HTMLInputElement>(null)
-  const nav = useNavigate()
+  const setClub = (i: number | null, club: string) => setFiles((fs) => fs.map((f, n) => (i === null || n === i ? { ...f, club } : f)))
+  const pick = (list: FileList | null) => {
+    if (!list?.length) return
+    const last = files.at(-1)?.club ?? '7i'
+    setFiles((fs) => [...fs, ...[...list].map((file) => ({ file, club: last }))])
+  }
 
   return (
-    <Sheet title="Add swing" onClose={onClose} saveLabel={file ? 'Save' : 'Save without video'}
-      onSave={() => file
-        ? processSwing(file, { club, view, handedness: settings.handedness }, (id) => { onSaved(); nav(`/swings/${id}?from=Swings|/swings`) })
-        : api.createSwing({ club, view, takenAt: new Date().toISOString() }).then(({ id }) => { onSaved(); onClose(); nav(`/swings/${id}?from=Swings|/swings`) })}>
+    <Sheet title="Add swings" onClose={onClose} saveLabel={files.length ? `Upload ${files.length}` : 'Choose videos'}
+      onSave={async () => {
+        if (!files.length) return
+        bulk.add(files, view, settings.handedness)
+        onClose()
+      }}>
       <div className="field">
-        <span className="label">Video (optional)</span>
-        <input ref={input} type="file" accept="video/*" hidden onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        <button className="btn block" onClick={() => input.current?.click()}>{file ? file.name : 'Choose or record a clip'}</button>
+        <span className="label">Videos</span>
+        <input ref={input} type="file" accept="video/*" multiple hidden onChange={(e) => { pick(e.target.files); e.target.value = '' }} />
+        <button className="btn block" onClick={() => input.current?.click()}>{files.length ? 'Add more clips' : 'Choose or record clips'}</button>
       </div>
-      <div className="field">
-        <span className="label">Club</span>
-        <div className="chips">{CLUBS.map((c) => <button key={c} className="chip" aria-pressed={club === c} onClick={() => setClub(c)}>{c}</button>)}</div>
-      </div>
+      {files.length > 1 && (
+        <div className="field">
+          <span className="label">All clips</span>
+          <div className="chips">{CLUBS.map((c) => <button key={c} className="chip" aria-pressed={files.every((f) => f.club === c)} onClick={() => setClub(null, c)}>{c}</button>)}</div>
+        </div>
+      )}
+      {files.map((f, i) => (
+        <div className="field" key={`${f.file.name}${f.file.size}${i}`}>
+          <span className="label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.file.name}</span>
+            <button className="iconbtn" aria-label="Remove clip" onClick={() => setFiles((fs) => fs.filter((_, n) => n !== i))}><Icon name="close" size={16} /></button>
+          </span>
+          <div className="chips">{CLUBS.map((c) => <button key={c} className="chip" aria-pressed={f.club === c} onClick={() => setClub(i, c)}>{c}</button>)}</div>
+        </div>
+      ))}
       <div className="field">
         <span className="label">Camera</span>
         <div className="chips">
