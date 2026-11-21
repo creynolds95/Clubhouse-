@@ -10,8 +10,28 @@ Runs entirely on Cloudflare's free tier (Worker + static assets, D1, R2, Access)
   tempo, spine tilt, turn, lead arm and head movement.
 - **Rounds.** Hole-by-hole quick entry (par, score, putts, fairway). GIR is derived.
 - **Stats.** Scoring average, to-par, putts, fairways, GIR, penalties, par-type scoring.
-- **Coach (off).** Haiku 5.5 per-clip feedback and a weekly Sonnet 5.5 review + practice plan. Wired in as the
-  final step; see `worker/ai.ts`.
+- **Coach (off).** Haiku 5.5 for everyday feedback, Sonnet 5.5 only for a deeper review you ask for. No scheduled
+  AI runs. Daily caps and cost rules live in `AI_RULES` in `worker/ai.ts`. Wired in as the final step.
+
+## Outside services
+
+Every outbound call goes through `worker/outbound.ts`: logged to `api_log` (Settings > Outside services > Call log),
+paused after a 401/403/429/5xx or timeout so a broken source isn't hammered, and Nominatim is held to 1 request/s.
+
+| Source | Used for | Limits we keep |
+|---|---|---|
+| GolfCourseAPI | pars, tees, yardages when you pick a course | 28 calls/day (free tier ~35), counted before sending; search cached 30 days, course card cached 1 year |
+| OpenGolfAPI | name and nearby search | answers 403 from Workers today, so it pauses for 24 h after each 403 |
+| OSM Nominatim | nearby and name search, city lookup | 1 request/s, results cached 7–90 days |
+| OSM Overpass | hole pars for OSM courses | times out from Cloudflare; pauses 6 h per mirror |
+| Zippopotam | ZIP to location | cached 90 days |
+
+## Free-tier guards
+
+- Videos and raw imports are deleted after the retention window (7 days default) by the daily cron.
+- Uploads are refused when R2 would pass 90% of the free 10 GB.
+- The cron also trims the call log (30 days) and stale lookup caches.
+- Coming back to the app reloads a screen at most once a minute.
 
 ## Stack
 
@@ -21,7 +41,7 @@ Runs entirely on Cloudflare's free tier (Worker + static assets, D1, R2, Access)
 | API | Hono on a Cloudflare Worker (`worker/`) |
 | Data | D1 (`migrations/`), R2 for video + keyframes |
 | Pose | `@mediapipe/tasks-vision`, lazy-loaded, model cached by the service worker |
-| Auth | Cloudflare Access in front of the whole hostname |
+| Auth | Cloudflare Access in front of the whole hostname (not set up yet: the app is public until it is) |
 
 ## Local dev
 

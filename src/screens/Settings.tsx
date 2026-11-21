@@ -67,8 +67,12 @@ export default function Settings() {
       <div className="card">
         <h2>Coach</h2>
         <div className="row"><div className="grow">Status</div><div className="val">{ai.data ? (ai.data.enabled ? 'On' : 'Off') : '—'}</div></div>
-        <div className="row"><div className="grow">Per-swing feedback</div><div className="val">{ai.data?.perClipModel ?? '—'}</div></div>
-        <div className="row"><div className="grow">Weekly review + plan</div><div className="val">{ai.data?.weeklyModel ?? '—'}</div></div>
+        <div className="row"><div className="grow">Everyday feedback<div className="cap">Swings, scorecard photos, round write-ups{ai.data?.dailyCap ? ` · up to ${ai.data.dailyCap.routine} a day` : ''}</div></div><div className="val">{ai.data?.perClipModel ?? '—'}</div></div>
+        <div className="row"><div className="grow">Deeper review<div className="cap">Only when you ask{ai.data?.dailyCap ? ` · up to ${ai.data.dailyCap.deep} a day` : ''}</div></div><div className="val">{ai.data?.weeklyModel ?? '—'}</div></div>
+      </div>
+      <div className="card">
+        <h2>Outside services</h2>
+        <Link className="row chev" to="/settings/log?from=Settings|/settings"><div className="grow">Call log<div className="cap">Every lookup to course and map services: what, when, result, quota left.</div></div></Link>
       </div>
       <div className="card">
         <div className="row"><div className="grow">Version</div><div className="val">{__APP_VERSION__}</div></div>

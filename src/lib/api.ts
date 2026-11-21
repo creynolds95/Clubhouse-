@@ -8,11 +8,14 @@ export interface Usage {
   warnings: string[]
 }
 
+/** The server answered with an error. Network failures stay TypeError (that is how fetch reports offline). */
+export class ApiError extends Error { constructor(msg: string, readonly status: number) { super(msg) } }
+
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, init)
   if (!res.ok) {
     const msg = await res.json().then((j) => j.error).catch(() => null)
-    throw new Error(msg || `Request failed (${res.status})`)
+    throw new ApiError(msg || `Request failed (${res.status})`, res.status)
   }
   return res.status === 204 ? (undefined as T) : res.json()
 }
@@ -56,7 +59,24 @@ export const api = {
   usage: () => req<Usage>('/usage'),
   setRetention: (days: number) => req<void>('/settings/retention', json('PUT', { days })),
   purgeNow: () => req<{ videos: number; files: number; days: number }>('/maintenance/purge', { method: 'POST' }),
-  aiStatus: () => req<{ enabled: boolean; perClipModel: string; weeklyModel: string }>('/ai/status'),
+  aiStatus: () => req<{ enabled: boolean; perClipModel: string; weeklyModel: string; dailyCap?: { routine: number; deep: number } }>('/ai/status'),
+  log: (limit = 150) => req<LogReport>(`/log?limit=${limit}`),
+}
+
+/** Frame image URL. Frames are cached as immutable, and "Read swing again" rewrites them, so the URL carries a version. */
+export const frameSrc = (s: Pick<Swing, 'id' | 'metrics'>, phase: SwingPhase) => {
+  const key = JSON.stringify(s.metrics?.phaseTimes ?? {})
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) | 0
+  return `/api/swings/${s.id}/frames/${phase}?v=${(h >>> 0).toString(36)}`
+}
+
+export interface LogRow { id: number; at: string; source: string; purpose: string; outcome: 'ok' | 'error' | 'cached' | 'skipped'; status: number | null; ms: number | null; quota_left: number | null; note: string | null }
+export interface LogReport {
+  last24h: { source: string; total: number; ok: number; errors: number; cached: number; skipped: number; avg_ms: number | null }[]
+  paused: { key: string; until: string; why: string }[]
+  rows: LogRow[]
+  golfCourseApi: { usedToday: number; budget: number; keySet: boolean }
 }
 
 export const shortDate = (iso: string) =>

@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useHeader } from '../components/Shell'
 import { Sheet } from '../components/Sheet'
 import { Icon } from '../components/Icon'
-import { api, shortDate } from '../lib/api'
+import { api, frameSrc, shortDate } from '../lib/api'
 import { useData } from '../lib/useData'
 import { useSettings } from '../lib/settings'
 import { bulk } from '../lib/bulk'
@@ -30,7 +30,7 @@ export default function Swings() {
             {data.map((s) => (
               <Link key={s.id} className="row chev" to={`/swings/${s.id}?from=Swings|/swings`}>
                 {s.frames.includes('top')
-                  ? <img src={`/api/swings/${s.id}/frames/top`} alt="" width={40} height={56} style={{ objectFit: 'cover', borderRadius: 6 }} loading="lazy" />
+                  ? <img src={frameSrc(s, 'top')} alt="" width={40} height={56} style={{ objectFit: 'cover', borderRadius: 6 }} loading="lazy" />
                   : <div style={{ width: 40, height: 56, borderRadius: 6, background: 'var(--line)' }} />}
                 <div className="grow">{s.club ?? 'Swing'}
                   <div className="cap">{[shortDate(s.takenAt ?? s.createdAt), s.view === 'face_on' ? 'Face on' : s.view ? 'From behind' : null, s.metrics?.tempoRatio ? `tempo ${s.metrics.tempoRatio}:1` : null].filter(Boolean).join(' · ')}</div>

@@ -29,7 +29,8 @@ export async function purgeExpired(env: MaintEnv) {
   const days = await getRetentionDays(env)
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString()
 
-  const videos = await env.DB.prepare("SELECT id, video_key FROM swings WHERE video_key IS NOT NULL AND created_at < ?").bind(cutoff).all<{ id: string; video_key: string }>()
+  // R2 deletes up to 1000 keys per call; anything beyond that goes on the next daily run.
+  const videos = await env.DB.prepare("SELECT id, video_key FROM swings WHERE video_key IS NOT NULL AND created_at < ? LIMIT 1000").bind(cutoff).all<{ id: string; video_key: string }>()
   if (videos.results.length) {
     await env.MEDIA.delete(videos.results.map((v) => v.video_key))
     await env.DB.batch(videos.results.map((v) => env.DB.prepare('UPDATE swings SET video_key = NULL WHERE id = ?').bind(v.id)))
@@ -37,14 +38,34 @@ export async function purgeExpired(env: MaintEnv) {
   // a swing is a video: drop stray records that never got one (failed uploads), but keep ones whose video aged out
   const orphanCut = new Date(Date.now() - 3_600_000).toISOString()
   await env.DB.prepare("DELETE FROM swings WHERE video_key IS NULL AND (frames IS NULL OR frames = '[]') AND metrics IS NULL AND created_at < ?").bind(orphanCut).run()
-  const files = await env.DB.prepare("SELECT id, r2_key FROM imports WHERE r2_key != '' AND created_at < ?").bind(cutoff).all<{ id: string; r2_key: string }>()
+  const files = await env.DB.prepare("SELECT id, r2_key FROM imports WHERE r2_key != '' AND created_at < ? LIMIT 1000").bind(cutoff).all<{ id: string; r2_key: string }>()
   if (files.results.length) {
     await env.MEDIA.delete(files.results.map((f) => f.r2_key))
     await env.DB.batch(files.results.map((f) => env.DB.prepare("UPDATE imports SET r2_key = '' WHERE id = ?").bind(f.id)))
   }
+  // Housekeeping so D1 doesn't grow forever: the call log keeps 30 days, old budget counters and pauses go,
+  // lookup caches older than 120 days go. Saved course cards (gcad:, ogd:) are kept.
+  const ago = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString()
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM api_log WHERE at < ?').bind(ago(30)),
+    env.DB.prepare("DELETE FROM geo_cache WHERE (key LIKE 'gca-used:%' OR key LIKE 'down:%') AND fetched_at < ?").bind(ago(3)),
+    env.DB.prepare("DELETE FROM geo_cache WHERE key NOT LIKE 'gcad:%' AND key NOT LIKE 'ogd:%' AND fetched_at < ?").bind(ago(120)),
+    env.DB.prepare('DELETE FROM usage_daily WHERE day < ?').bind(ago(90).slice(0, 10)),
+  ])
   await env.DB.prepare("INSERT INTO app_settings (key, value) VALUES ('last_purge', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(new Date().toISOString()).run()
   await env.DB.prepare("DELETE FROM app_settings WHERE key = 'r2_usage'").run() // force a fresh size next time
   return { videos: videos.results.length, files: files.results.length, days }
+}
+
+/**
+ * Upload guard: refuse a new file if it would push R2 past 90% of the free 10 GB. Uses the last measured size
+ * (no extra list calls on upload); the size is re-measured at most every 6 hours and after each cleanup.
+ */
+export async function r2HasRoom(env: MaintEnv, incomingBytes: number) {
+  const row = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'r2_usage'").first<{ value: string }>()
+  if (!row) return true
+  const { bytes } = JSON.parse(row.value) as { bytes: number }
+  return bytes + incomingBytes < FREE.r2Bytes * 0.9
 }
 
 /** R2 size by listing objects. List calls are billed operations, so the result is cached for 6 hours. */
