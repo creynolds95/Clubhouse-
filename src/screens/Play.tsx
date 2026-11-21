@@ -121,6 +121,7 @@ export default function Play() {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', margin: -16, minHeight: 'calc(var(--vv-h) - 64px - env(safe-area-inset-top))' }}>
+      <div style={{ flex: '1 1 auto', display: 'flex', flexDirection: 'column', justifyContent: 'center', paddingBottom: 4 }}>
       <div className="card" style={{ margin: '8px 16px 0', padding: '8px 14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
         <div>
           <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>Par {h.par}</div>
@@ -144,13 +145,13 @@ export default function Play() {
           <div style={{ flex: 1, textAlign: 'center', fontSize: 30, fontWeight: 700 }}>{h.putts ?? '—'}</div>
           <button className="btn" style={stepBtn} aria-label="Putts plus" onClick={() => set({ putts: Math.min(15, (h.putts ?? -1) + 1) })}>+</button></div>
       </div>
-      <div className="card" style={{ margin: '8px 16px 0', padding: 8, background: 'var(--tint)', flex: '1 1 auto', maxHeight: 400, display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div className="card" style={{ margin: '8px 16px 0', padding: 8, flex: '1 1 auto', maxHeight: 330, display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{ fontSize: 13, fontWeight: 700, letterSpacing: '.06em', textTransform: 'uppercase', color: 'var(--accent)' }}>Score</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gridAutoRows: 'minmax(34px, 1fr)', gap: 8, flex: 1 }}>
           {([['Eagle', -2], ['Birdie', -1], ['Par', 0], ['Bogey', 1], ['Double', 2], ['Triple', 3]] as const).map(([l, d]) => {
             const on = h.strokes === h.par + d && h.par + d > 0
             return (
-              <button key={l} className="chip" style={{ fontSize: 15, fontWeight: 600, justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 0, lineHeight: 1.1, ...(on ? {} : { background: 'var(--surface)', border: edge }) }} aria-pressed={on}
+              <button key={l} className="chip" style={{ fontSize: 15, fontWeight: 600, justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 0, lineHeight: 1.1, ...(on ? {} : { background: 'var(--bg)', border: edge }) }} aria-pressed={on}
                 onClick={() => { const first = h.strokes === 0; set({ strokes: Math.max(1, h.par + d) }); if (first && s.idx < s.count - 1) setTimeout(() => go(s.idx + 1), 250) }}>
                 <span style={{ display: 'block', fontSize: 22, fontWeight: 800 }}>{Math.max(1, h.par + d)}</span><span style={{ display: 'block' }}>{l}</span></button>
             )
@@ -158,12 +159,12 @@ export default function Play() {
         </div>
         <div style={line}>
           <span style={{ ...lab, flex: 1, width: 'auto' }}>Other</span>
-          <button className="btn" style={{ ...stepBtn, minHeight: 40, background: 'var(--surface)' }} aria-label="Score minus" onClick={() => set({ strokes: h.strokes <= 1 ? 0 : h.strokes - 1 })}>−</button>
+          <button className="btn" style={{ ...stepBtn, minHeight: 40 }} aria-label="Score minus" onClick={() => set({ strokes: h.strokes <= 1 ? 0 : h.strokes - 1 })}>−</button>
           <div style={{ width: 44, textAlign: 'center', fontSize: 26, fontWeight: 700 }}>{h.strokes || '—'}</div>
-          <button className="btn" style={{ ...stepBtn, minHeight: 40, background: 'var(--surface)' }} aria-label="Score plus" onClick={() => set({ strokes: Math.min(15, (h.strokes || 0) + 1) })}>+</button>
+          <button className="btn" style={{ ...stepBtn, minHeight: 40 }} aria-label="Score plus" onClick={() => set({ strokes: Math.min(15, (h.strokes || 0) + 1) })}>+</button>
         </div>
       </div>
-      <div style={{ flex: 1, minHeight: 4 }} />
+      </div>
       <div style={{ position: 'sticky', bottom: 0, padding: '8px 16px calc(8px + env(safe-area-inset-bottom))', background: 'var(--bg)', borderTop: '1px solid var(--line)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, zIndex: 5 }}>
         <button className="btn" style={{ gridColumn: '1 / -1', minHeight: 42, fontSize: 17, fontWeight: 600, border: edge }} onClick={() => setChart(true)}>Distances</button>
         <button className="btn" style={{ minHeight: 50, fontSize: 18, fontWeight: 600, border: edge }} disabled={s.idx === 0} onClick={() => go(s.idx - 1)}>‹ Back</button>
