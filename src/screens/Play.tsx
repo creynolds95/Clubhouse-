@@ -166,8 +166,8 @@ export default function Play() {
       </div>
       </div>
       <div style={{ position: 'sticky', bottom: 0, padding: '8px 16px calc(8px + env(safe-area-inset-bottom))', background: 'var(--bg)', borderTop: '1px solid var(--line)', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, zIndex: 5 }}>
-        <button className="btn" style={{ gridColumn: '1 / -1', minHeight: 42, fontSize: 17, fontWeight: 600, border: edge }} onClick={() => setChart(true)}>Distances</button>
-        <button className="btn" style={{ minHeight: 50, fontSize: 18, fontWeight: 600, border: edge }} disabled={s.idx === 0} onClick={() => go(s.idx - 1)}>‹ Back</button>
+        <button className="btn primary" style={{ gridColumn: '1 / -1', minHeight: 42, fontSize: 17, fontWeight: 600 }} onClick={() => setChart(true)}>Club distances</button>
+        <button className="btn primary" style={{ minHeight: 50, fontSize: 18, fontWeight: 600 }} disabled={s.idx === 0} onClick={() => go(s.idx - 1)}>‹ Back</button>
         {s.idx < s.count - 1 ? <button className="btn primary" style={{ minHeight: 50, fontSize: 18, fontWeight: 600 }} onClick={() => go(s.idx + 1)}>Next ›</button> : <button className="btn primary" style={{ minHeight: 50, fontSize: 18, fontWeight: 600 }} onClick={() => setDone(true)}>Finish</button>}
       </div>
       {grid && (
@@ -185,7 +185,7 @@ export default function Play() {
           <div style={{ padding: '0 16px 16px' }}><button className="btn block" onClick={() => { setGrid(false); setDone(true) }}>End round early</button></div>
         </Sheet>
       )}
-      {chart && <Sheet title="Distances" tall onClose={() => setChart(false)}><DistanceChart /></Sheet>}
+      {chart && <Sheet title="Club distances" tall onClose={() => setChart(false)}><DistanceChart /></Sheet>}
     </div>
   )
 }
