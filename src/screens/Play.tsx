@@ -127,7 +127,7 @@ export default function Play() {
           <div style={{ fontSize: 34, fontWeight: 800, lineHeight: 1 }}>Par {h.par}</div>
           <div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{[yds ? `${yds} yd` : 'No yardage', hcp && `Hcp ${hcp}`].filter(Boolean).join(' · ')}</div>
         </div>
-        {running && <div style={{ textAlign: 'right' }}><div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: rel > 0 ? 'var(--c-clay)' : rel < 0 ? 'var(--c-green)' : 'var(--text)' }}>{running}</div><div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>through {playedHoles.length}</div></div>}
+        <div style={{ textAlign: 'right' }}><div style={{ fontSize: 30, fontWeight: 800, lineHeight: 1, color: !running ? 'var(--muted)' : rel > 0 ? 'var(--c-clay)' : rel < 0 ? 'var(--c-green)' : 'var(--text)' }}>{running ?? '—'}</div><div style={{ fontSize: 13, color: 'var(--muted)', marginTop: 2 }}>{playedHoles.length ? `${total} · through ${playedHoles.length}` : 'no scores yet'}</div></div>
       </div>
       <div className="card" style={{ margin: '8px 16px 0', padding: 8, display: 'grid', gap: 6 }}>
         {h.par >= 4 && (
@@ -153,7 +153,7 @@ export default function Play() {
             return (
               <button key={l} className="chip" style={{ fontSize: 15, fontWeight: 600, justifyContent: 'center', alignItems: 'center', flexDirection: 'column', gap: 0, lineHeight: 1.1, ...(on ? {} : { background: 'var(--bg)', border: edge }) }} aria-pressed={on}
                 onClick={() => { const first = h.strokes === 0; set({ strokes: Math.max(1, h.par + d) }); if (first && s.idx < s.count - 1) setTimeout(() => go(s.idx + 1), 250) }}>
-                <span style={{ display: 'block', fontSize: 22, fontWeight: 800 }}>{Math.max(1, h.par + d)}</span><span style={{ display: 'block' }}>{l}</span></button>
+                <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%' }}><span style={{ fontSize: 22, fontWeight: 800 }}>{Math.max(1, h.par + d)}</span><span>{l}</span></span></button>
             )
           })}
         </div>
@@ -172,12 +172,16 @@ export default function Play() {
       </div>
       {grid && (
         <Sheet title="All holes" onClose={() => setGrid(false)}>
+          <div style={{ padding: '4px 16px 8px', display: 'flex', alignItems: 'baseline', gap: 10 }}>
+            <span style={{ fontSize: 34, fontWeight: 800, color: !running ? 'var(--muted)' : rel > 0 ? 'var(--c-clay)' : rel < 0 ? 'var(--c-green)' : 'var(--text)' }}>{running ?? '—'}</span>
+            <span style={{ color: 'var(--muted)' }}>{playedHoles.length ? `${total} strokes through ${playedHoles.length} ${playedHoles.length === 1 ? 'hole' : 'holes'}` : 'No scores yet'}</span>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, padding: '4px 16px 16px' }}>
             {s.holes.map((x, i) => (
-              <button key={x.hole} className="btn" style={{ minHeight: 72, flexDirection: 'column', gap: 2, outline: i === s.idx ? '3px solid var(--brass)' : undefined, background: x.strokes ? 'var(--tint)' : undefined, opacity: x.strokes || i === s.idx ? 1 : 0.7 }}
+              <button key={x.hole} className="btn" style={{ minHeight: 72, flexDirection: 'column', gap: 2, outline: i === s.idx ? '3px solid var(--brass)' : undefined, background: x.strokes ? 'var(--bg)' : undefined, opacity: x.strokes || i === s.idx ? 1 : 0.7 }}
                 onClick={() => { go(i); setGrid(false) }}>
                 <span style={{ fontSize: 13, color: 'var(--muted)' }}>H{x.hole} · Par {x.par}</span>
-                <span style={{ fontSize: 28, fontWeight: 800 }}>{x.strokes || '–'}</span>
+                <span style={{ fontSize: 28, fontWeight: 800, color: !x.strokes ? undefined : x.strokes > x.par ? 'var(--c-clay)' : x.strokes < x.par ? 'var(--c-green)' : undefined }}>{x.strokes || '–'}</span>
               </button>
             ))}
           </div>
