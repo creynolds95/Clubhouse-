@@ -121,7 +121,7 @@ export function Shell({ children }: { children: ReactNode }) {
           <div id="app-scroll" ref={scroller}>
             <div className="content">{children}</div>
           </div>
-          <nav className="tabbar" aria-label="Tabs">
+          <nav className="tabbar" aria-label="Tabs" hidden={loc.pathname === '/play'}>
             {TABS.map((t) => (
               <NavLink key={t.to} to={t.to} end={t.to === '/'} replace
                 onClick={() => { if (loc.pathname === t.to) scroller.current?.scrollTo({ top: 0, behavior: 'smooth' }) }}>
