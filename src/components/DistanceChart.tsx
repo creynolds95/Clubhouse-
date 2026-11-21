@@ -46,7 +46,7 @@ export function DistanceChart({ autoFocus }: { autoFocus?: boolean }) {
   )
   return (
     <>
-      <div className="field"><span className="label">Yards to carry (from your rangefinder)</span>
+      <div className="field"><span className="label">Rangefinder yardage (optional)</span>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn" style={{ minHeight: 64, minWidth: 64, fontSize: 22 }} onClick={() => step(-5)}>−5</button>
           <input inputMode="numeric" autoFocus={autoFocus} placeholder="145" value={yd} onChange={(e) => setYd(e.target.value.replace(/\D/g, '').slice(0, 3))} style={{ fontSize: 40, fontWeight: 800, minHeight: 64, textAlign: 'center', flex: 1, minWidth: 0 }} />
