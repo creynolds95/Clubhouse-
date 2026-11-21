@@ -185,7 +185,7 @@ export default function Play() {
           <div style={{ padding: '0 16px 16px' }}><button className="btn block" onClick={() => { setGrid(false); setDone(true) }}>End round early</button></div>
         </Sheet>
       )}
-      {chart && <Sheet title="Club distances" tall onClose={() => setChart(false)}><DistanceChart /></Sheet>}
+      {chart && <Sheet title="Club distances" tall onClose={() => setChart(false)}><DistanceChart lookup={false} /></Sheet>}
     </div>
   )
 }
