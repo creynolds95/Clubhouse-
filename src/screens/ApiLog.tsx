@@ -20,6 +20,26 @@ export default function ApiLog() {
   const [filter, setFilter] = useState<string>('all')
   const { data, loading, error, reload } = useData(() => api.log(300))
 
+  const [test, setTest] = useState<string | null>(null)
+  const [testing, setTesting] = useState(false)
+  /** One honest request from this phone's browser to OpenGolfAPI: tells us whether it answers, and whether it allows browser requests (CORS). */
+  const runTest = async () => {
+    setTesting(true); setTest(null)
+    const t0 = Date.now()
+    let out: { outcome: 'ok' | 'error'; status?: number; note: string }
+    try {
+      const r = await fetch('https://api.opengolfapi.org/v1/courses/search?q=pecan&limit=1', { signal: AbortSignal.timeout(10_000) })
+      const body = await r.text()
+      out = r.ok ? { outcome: 'ok', status: r.status, note: `Answered with ${body.length} bytes` } : { outcome: 'error', status: r.status, note: `HTTP ${r.status}${/cloudflare|just a moment/i.test(body) ? ' (Cloudflare page)' : ''}` }
+    } catch (e) {
+      out = { outcome: 'error', note: (e as Error).name === 'TimeoutError' ? 'Timed out' : 'No answer the browser could read: blocked by CORS, or offline' }
+    }
+    const ms = Date.now() - t0
+    setTest(out.outcome === 'ok' ? `Works from this phone (${ms} ms). ${out.note}.` : `Failed: ${out.note}.`)
+    await api.logClient({ purpose: 'phone test: course search', outcome: out.outcome, status: out.status, ms, note: out.note }).catch(() => {})
+    setTesting(false); reload()
+  }
+
   if (loading && !data) return <><div className="skeleton" /><div className="skeleton" style={{ height: 240 }} /></>
   if (error || !data) return <div className="empty"><div className="t">Couldn't load the log.</div><div className="s">{error}</div></div>
   const g = data.golfCourseApi
@@ -32,6 +52,13 @@ export default function ApiLog() {
         <h2>GolfCourseAPI today</h2>
         <div className="row"><div className="grow">Calls used<div className="cap">Our own cap, a few under their ~35/day free limit. Resets at midnight UTC.</div></div>
           <div className="val" style={g.usedToday >= g.budget ? { color: 'var(--flag)' } : undefined}>{g.keySet ? `${g.usedToday} / ${g.budget}` : 'No key set'}</div></div>
+      </div>
+
+      <div className="card">
+        <h2>OpenGolfAPI from this phone</h2>
+        <div className="note">One test request from this phone's browser, since the server's requests are blocked. Uses one OpenGolfAPI call, no GolfCourseAPI quota.</div>
+        <div style={{ padding: '0 16px 12px' }}><button className="btn block" disabled={testing} onClick={runTest}>{testing ? 'Testing…' : 'Run one test'}</button></div>
+        {test && <div className="note">{test}</div>}
       </div>
 
       {data.paused.length > 0 && (

@@ -5,7 +5,7 @@ import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
 import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate, Profile } from '../shared/types'
 import { bumpRequests, purgeExpired, r2HasRoom, setRetentionDays, usageReport } from './maintenance'
-import { logReport } from './outbound'
+import { logCall, logReport } from './outbound'
 import { GCA_BUDGET, gcaUsedToday } from './courses'
 
 type Env = AiEnv & CourseEnv & { DB: D1Database; MEDIA: R2Bucket; ASSETS: Fetcher }
@@ -313,6 +313,14 @@ app.get('/log', async (c) => c.json({
   ...(await logReport(c.env, Number(c.req.query('limit')) || 150)),
   golfCourseApi: { usedToday: await gcaUsedToday(c.env), budget: GCA_BUDGET, keySet: !!c.env.GOLF_COURSE_API_KEY },
 }))
+
+// A one-off test the phone runs against OpenGolfAPI from the browser; the phone reports the result here so it shows in the log.
+app.post('/log/client', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as Record<string, unknown>
+  const outcome = b.outcome === 'ok' ? 'ok' : 'error'
+  await logCall(c.env, { source: 'opengolf', purpose: String(b.purpose ?? 'phone test').slice(0, 80), outcome, status: Number.isInteger(b.status) ? Number(b.status) : null, ms: Number.isInteger(b.ms) ? Number(b.ms) : undefined, note: `From the phone. ${String(b.note ?? '').slice(0, 150)}` })
+  return c.body(null, 204)
+})
 
 // ---- Player profile (plain JSON in app_settings; read by the coach) ----
 const num = (v: unknown, min: number, max: number) => { const n = Number(v); return v != null && v !== '' && Number.isFinite(n) && n >= min && n <= max ? n : undefined }
