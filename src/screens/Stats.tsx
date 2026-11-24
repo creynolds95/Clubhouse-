@@ -3,6 +3,8 @@ import { useHeader } from '../components/Shell'
 import { api } from '../lib/api'
 import { useData } from '../lib/useData'
 import { byCourse, computeStats, missPatterns, strokesLost } from '../lib/stats'
+import { CoachCard } from '../components/CoachCard'
+import { trendFacts } from '../lib/coachFacts'
 
 const RANGES = [{ k: '5', label: 'Last 5' }, { k: '10', label: 'Last 10' }, { k: '20', label: 'Last 20' }, { k: 'all', label: 'All' }]
 
@@ -50,6 +52,8 @@ export default function Stats() {
           </div></div>
           {Math.abs(m.left - m.right) >= 12 && <div className="note">Your tee shots miss {m.left > m.right ? 'left' : 'right'} more often ({Math.max(m.left, m.right)}% vs {Math.min(m.left, m.right)}%).</div>}</>
       ) })()}
+      <CoachCard title="Coach suggestions" label="Get suggestions" cacheKey={`clubhouse.suggest.${range}`} note={`${rounds.length} rounds`}
+        run={async () => (await api.suggestions(trendFacts(rounds))).text} deepRun={async () => (await api.suggestions(trendFacts(rounds), true)).text} />
       {(() => { const l = strokesLost(rounds); return (
         <><div className="label" style={{ marginTop: 16 }}>Where you lose shots</div>
           {l ? <div className="card" style={{ marginTop: 8 }}>{l.map((x) => (

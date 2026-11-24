@@ -59,7 +59,15 @@ export default function Scorecard() {
     catch (e) { floater.set({ text: `Couldn't save the photo. ${(e as Error).message}`, busy: false, error: true }) }
     finally { setBusy(false) }
   }
-  const read = async () => { try { await api.readScorecard(course.id, tee) } catch (e) { floater.set({ text: (e as Error).message, busy: false }) } }
+  const read = async () => {
+    setBusy(true); floater.set({ text: 'Reading the card…', busy: true })
+    try {
+      const { rows: got } = await api.readScorecard(course.id, tee)
+      setRows((cur) => cur.map((r) => { const g = got.find((x) => x.hole === r.hole); return g ? { ...r, par: g.par ?? r.par, hcp: g.hcp ?? r.hcp, yds: g.yds ?? r.yds } : r }))
+      floater.set({ text: `Read ${got.length} holes. Check the numbers, then Save.`, busy: false })
+    } catch (e) { floater.set({ text: (e as Error).message, busy: false, error: true }) }
+    finally { setBusy(false) }
+  }
   const save = async () => {
     setBusy(true)
     try {
@@ -90,7 +98,7 @@ export default function Scorecard() {
           <input ref={file} type="file" accept="image/*" capture="environment" hidden onChange={(e) => onPhoto(e.target.files?.[0])} />
           <div style={{ padding: '8px 16px 16px', display: 'grid', gap: 8 }}>
             <button className="btn block" disabled={busy} onClick={() => file.current?.click()}>{photo ? 'Replace photo' : 'Take or choose a photo'}</button>
-            <button className="btn block" disabled={!photo || !ai.data?.enabled} onClick={read}>Read the photo{ai.data?.enabled ? '' : ' (turns on with the AI coach)'}</button>
+            <button className="btn block" disabled={busy || !photo || !ai.data?.enabled} onClick={read}>Read the photo{ai.data?.enabled ? '' : ' (coach is off)'}</button>
           </div></> : <div className="note">Choose or add a tee first.</div>}
       </div>
       <div className="card">

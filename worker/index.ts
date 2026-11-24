@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
-import { aiStatus, aiTest, getCoach, CoachOffError, type AiEnv } from './ai'
+import { aiStatus, aiTest, CoachBlocked, readScorecardPhoto, roundWriteup, suggestions, swingFeedback, type AiEnv } from './ai'
 import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate, Profile } from '../shared/types'
 import { bumpRequests, purgeExpired, r2HasRoom, setRetentionDays, usageReport } from './maintenance'
@@ -286,9 +286,11 @@ app.get('/courses/:id/scorecard', async (c) => {
   if (!obj) return c.json({ error: 'No photo' }, 404)
   return new Response(obj.body, { headers: { 'content-type': 'image/jpeg', 'cache-control': 'private, max-age=3600' } })
 })
-app.post('/courses/:id/scorecard/read', (c) => {
-  if (!aiStatus(c.env).enabled) return c.json({ error: 'Reading a scorecard photo turns on with the AI coach. Enter the numbers by hand for now.' }, 503)
-  return c.json({ error: 'Not implemented' }, 501)
+app.post('/courses/:id/scorecard/read', async (c) => {
+  if (!aiStatus(c.env).enabled) return c.json({ error: 'The coach is off.' }, 503)
+  const obj = await c.env.MEDIA.get(cardKey(c.req.param('id'), c.req.query('tee') ?? ''))
+  if (!obj) return c.json({ error: 'Save the photo first.' }, 404)
+  return coachJson(c, async () => readScorecardPhoto(c.env, await obj.arrayBuffer(), c.req.query('tee') ?? ''))
 })
 app.delete('/courses/:id', async (c) => {
   const id = c.req.param('id')
@@ -344,9 +346,44 @@ app.put('/profile', async (c) => {
 // ---- Coach (off until the final step) ----
 app.get('/ai/status', (c) => c.json(aiStatus(c.env)))
 app.post('/ai/test', async (c) => c.json(await aiTest(c.env)))
-app.post('/swings/:id/analyze', (c) => {
-  try { getCoach(c.env) } catch (e) { if (e instanceof CoachOffError) return c.json({ error: e.message }, 503); throw e }
-  return c.json({ error: 'Not implemented' }, 501)
+const loadProfile = async (env: { DB: D1Database }) => {
+  const r = await env.DB.prepare("SELECT value FROM app_settings WHERE key = 'profile'").first<{ value: string }>()
+  try { return r ? JSON.parse(r.value) as Profile : null } catch { return null }
+}
+/** Run a coach call and turn a refusal (off, cap used, API error) into a clean JSON error the app can show. */
+async function coachJson(c: { json: (b: unknown, s?: 200 | 429 | 502 | 503) => Response }, run: () => Promise<unknown>) {
+  try { return c.json(await run()) } catch (e) {
+    if (e instanceof CoachBlocked) return c.json({ error: e.message }, /limit|off/i.test(e.message) ? 429 : 502)
+    throw e
+  }
+}
+app.post('/ai/round-writeup', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as { facts?: string }
+  if (!b.facts?.trim()) return c.json({ error: 'No round to write up.' }, 400)
+  return coachJson(c, async () => ({ text: await roundWriteup(c.env, b.facts!, await loadProfile(c.env)) }))
+})
+app.post('/ai/suggestions', async (c) => {
+  const b = await c.req.json().catch(() => ({})) as { facts?: string; deep?: boolean }
+  if (!b.facts?.trim()) return c.json({ error: 'No rounds yet.' }, 400)
+  return coachJson(c, async () => ({ text: await suggestions(c.env, b.facts!, await loadProfile(c.env), !!b.deep) }))
+})
+app.post('/swings/:id/analyze', async (c) => {
+  const id = c.req.param('id')
+  const row = await c.env.DB.prepare('SELECT * FROM swings WHERE id = ?').bind(id).first<SwingRow>()
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  const swing = toSwing(row)
+  if (!swing.frames.length) return c.json({ error: 'Read the swing first so there are frames to look at.' }, 400)
+  const frames: { phase: string; jpeg: ArrayBuffer }[] = []
+  for (const phase of swing.frames) {
+    const o = await c.env.MEDIA.get(`swings/${id}/frames/${phase}.jpg`)
+    if (o) frames.push({ phase, jpeg: await o.arrayBuffer() })
+  }
+  if (!frames.length) return c.json({ error: 'Frames are gone (cleaned up). Read the swing again.' }, 410)
+  return coachJson(c, async () => {
+    const feedback = await swingFeedback(c.env, { swing, frames, profile: await loadProfile(c.env) })
+    await c.env.DB.prepare('UPDATE swings SET feedback = ? WHERE id = ?').bind(feedback, id).run()
+    return { feedback }
+  })
 })
 
 app.notFound((c) => c.json({ error: 'Not found' }, 404))

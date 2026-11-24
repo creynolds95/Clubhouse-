@@ -20,6 +20,7 @@ export default function SwingDetail() {
   const [confirm, setConfirm] = useState(false)
   const [tracking, setTracking] = useState(false)
   const [tagging, setTagging] = useState(false)
+  const [coaching, setCoaching] = useState(false)
   const shots = useData(api.r10Shots)
   useHeader({ title: s?.club ?? 'Swing', back }, [s?.club, back.to])
 
@@ -106,7 +107,12 @@ export default function SwingDetail() {
       <div className="card">
         <h2>Coach</h2>
         {s.feedback ? <div className="note" style={{ color: 'var(--text)', whiteSpace: 'pre-wrap' }}>{s.feedback}</div>
-          : <div className="note">Feedback turns on when the coach is connected.</div>}
+          : <div className="note">{s.frames.length ? 'Get feedback on this swing from its key frames.' : 'Read the swing first, then the coach can give feedback.'}</div>}
+        <div style={{ padding: '4px 16px 14px' }}><button className="btn block" disabled={!s.frames.length || coaching} onClick={async () => {
+          setCoaching(true)
+          try { await api.coachSwing(s.id); reload() } catch (e) { floater.set({ text: (e as Error).message, busy: false, error: true }) }
+          setCoaching(false)
+        }}>{coaching ? 'Thinking…' : s.feedback ? 'Redo feedback' : 'Get feedback'}</button></div>
       </div>
 
       {s.hasVideo && m && (
