@@ -4,6 +4,8 @@ import { backFrom, useHeader } from '../components/Shell'
 import { HBars, HoleBars, Split } from '../components/Charts'
 import { api, shortDate } from '../lib/api'
 import { summarize } from '../lib/roundSummary'
+import { CoachCard } from '../components/CoachCard'
+import { roundFacts } from '../lib/coachFacts'
 import type { Round } from '../../shared/types'
 
 const LOST_COLOR: Record<string, string> = { Putting: 'var(--c-plum)', Penalties: 'var(--c-clay)', 'Off the tee': 'var(--c-navy)', 'Approach and short game': 'var(--c-gold)' }
@@ -40,6 +42,8 @@ export default function RoundSummary() {
       <div className="card" style={{ marginTop: 12, paddingTop: 12 }}>
         {s.headlines.map((h, i) => <div key={i} style={{ padding: '0 16px 10px', display: 'flex', gap: 10 }}><b style={{ color: 'var(--brass)' }}>{i + 1}</b><span>{h}</span></div>)}
       </div>
+
+      <CoachCard title="Coach write-up" label="Write it up" cacheKey={`clubhouse.writeup.${round.id}`} run={async () => (await api.roundWriteup(roundFacts(round, s))).text} />
 
       <div className="card" style={{ marginTop: 12 }}>
         <h2>Score by hole vs par</h2>

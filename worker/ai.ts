@@ -115,3 +115,78 @@ export async function aiTest(env: AiEnv): Promise<{ ok: boolean; message: string
     return { ok: true, message: `Works. ${model} replied "${(body.content?.[0]?.text ?? '').trim().slice(0, 40)}".` }
   } catch (e) { return { ok: false, message: `Couldn't reach Anthropic (${(e as Error).message}).` } }
 }
+
+// ---------------------------------------------------------------------------
+// Coach calls. Every one goes through claude(): gated by the switch and the daily cap, logged as source "anthropic".
+// Haiku does the everyday work. Sonnet runs only when the player asks for a deeper review.
+// ---------------------------------------------------------------------------
+export class CoachBlocked extends Error { override name = 'CoachBlocked' }
+
+const b64 = (buf: ArrayBuffer) => {
+  const u = new Uint8Array(buf); let s = ''
+  for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode(...u.subarray(i, i + 0x8000))
+  return btoa(s)
+}
+export const imageBlock = (jpeg: ArrayBuffer) => ({ type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: b64(jpeg) } })
+
+async function claude(env: AiEnv, kind: AiKind, purpose: string, system: string, content: unknown[], maxTokens: number): Promise<string> {
+  const gate = await aiAllowed(env, kind)
+  if (!gate.ok) throw new CoachBlocked(gate.reason)
+  const model = kind === 'deep' ? (env.AI_WEEKLY_MODEL ?? AI_RULES.deep.model) : (env.AI_PER_CLIP_MODEL ?? AI_RULES.routine.model)
+  let res: Response
+  try {
+    res = await call(env as { DB: D1Database }, { source: 'anthropic', purpose: `${kind}: ${purpose}`, timeoutMs: AI_RULES.timeoutMs }, 'https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
+    })
+  } catch (e) { throw new CoachBlocked(`Couldn't reach the coach (${(e as Error).message}).`) }
+  const body = await res.json().catch(() => ({})) as { content?: { type: string; text?: string }[]; error?: { message?: string } }
+  if (!res.ok) throw new CoachBlocked(`The coach answered ${res.status}${body.error?.message ? `: ${body.error.message}` : ''}`)
+  const text = (body.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim()
+  if (!text) throw new CoachBlocked('The coach sent back nothing.')
+  return text
+}
+
+const STYLE = 'Write plainly for a golfer with a single-digit to mid-handicap game. No praise or filler. Short sentences. Practical, specific, and tied to the numbers given. Never invent numbers that are not in the data.'
+
+/** Read a scorecard photo into per-hole par, handicap and yardage. The player reviews the result before saving. */
+export async function readScorecardPhoto(env: AiEnv, jpeg: ArrayBuffer, tee: string): Promise<{ rows: { hole: number; par?: number; hcp?: number; yds?: number }[] }> {
+  const text = await claude(env, 'routine', 'scorecard photo', 'You read golf scorecards. Reply with JSON only.', [
+    imageBlock(jpeg),
+    { type: 'text', text: `This is a golf scorecard photo. Extract the rows for the ${tee ? `"${tee}" tees` : 'tees shown'}. Reply with JSON only, no prose: {"rows":[{"hole":1,"par":4,"hcp":7,"yds":372}, ...]}. Use hole numbers 1 to 18 (or 1 to 9). Leave out any value you cannot read clearly instead of guessing. Skip total and in/out columns.` },
+  ], 1200)
+  const json = text.slice(text.indexOf('{'), text.lastIndexOf('}') + 1)
+  let parsed: { rows?: { hole?: number; par?: number; hcp?: number; yds?: number }[] }
+  try { parsed = JSON.parse(json) } catch { throw new CoachBlocked("Couldn't make sense of that photo. Try a flatter, closer shot.") }
+  const rows = (parsed.rows ?? []).flatMap((r) => {
+    const hole = Number(r.hole)
+    if (!Number.isInteger(hole) || hole < 1 || hole > 18) return []
+    const par = Number(r.par), hcp = Number(r.hcp), yds = Number(r.yds)
+    return [{ hole, ...(par >= 3 && par <= 6 ? { par } : {}), ...(hcp >= 1 && hcp <= 18 ? { hcp } : {}), ...(yds >= 60 && yds <= 800 ? { yds } : {}) }]
+  })
+  if (!rows.length) throw new CoachBlocked("Couldn't find hole rows in that photo.")
+  return { rows }
+}
+
+/** After-round write-up from the round's own numbers (Haiku). */
+export const roundWriteup = (env: AiEnv, facts: string, profile?: Profile | null) =>
+  claude(env, 'routine', 'round write-up', `You write a short after-round summary for the golfer. ${STYLE} Cover where strokes were lost, where they were gained, and one thing to do next round. 120 words at most. No headings. No bullet symbols.`,
+    [{ type: 'text', text: `${profilePrompt(profile)}\n\nRound facts:\n${facts.slice(0, 4000)}` }], 500)
+
+/** Suggestions from scores and strokes lost across recent rounds. Haiku by default, Sonnet when the player asks to go deeper. */
+export const suggestions = (env: AiEnv, facts: string, profile: Profile | null | undefined, deep: boolean) =>
+  claude(env, deep ? 'deep' : 'routine', deep ? 'deeper review' : 'suggestions', `You are a practical golf coach reading scorecard stats. ${STYLE} Give ${deep ? 'up to 5' : '3'} numbered suggestions, ordered by strokes they could save. Each is one or two sentences and names a drill or a course-management habit. ${deep ? 'End with a short practice plan for the next two weeks.' : ''}`,
+    [{ type: 'text', text: `${profilePrompt(profile)}\n\nStats:\n${facts.slice(0, 6000)}` }], deep ? 1500 : 600)
+
+/** Feedback on one swing from its key frames and pose-tracked numbers. Always framed as an estimate. */
+export async function swingFeedback(env: AiEnv, input: { swing: Swing; frames: { phase: string; jpeg: ArrayBuffer }[]; profile?: Profile | null }): Promise<string> {
+  const { swing, frames, profile } = input
+  const m = swing.metrics
+  const nums = m ? JSON.stringify({ view: swing.view, tempoRatio: m.tempoRatio, spineChangeDeg: m.spineChangeDeg, earlyExtensionPct: m.earlyExtensionPct, leadArmDegAtTop: m.leadArmDeg, handsAtTopPct: m.handsAtTopPct, headToTop: m.headToTop, headToImpact: m.headToImpact }) : 'none'
+  const content: unknown[] = []
+  for (const f of frames.slice(0, 6)) { content.push({ type: 'text', text: `Frame: ${f.phase}` }); content.push(imageBlock(f.jpeg)) }
+  content.push({ type: 'text', text: `${profilePrompt(profile)}\n\nClub: ${swing.club ?? 'unknown'}. Camera: ${swing.view === 'face_on' ? 'face on' : 'from behind'}.\nPose-tracked numbers (estimates from a phone camera, can be off): ${nums}\n\nGive feedback on this swing.` })
+  const text = await claude(env, 'routine', 'swing feedback', `You are a golf swing coach looking at key frames of one swing. ${STYLE} Give 3 short points: the main thing to fix, why it matters for ball flight, and one drill. Be honest about what a phone camera cannot show. If the frames or numbers do not support a point, leave it out. 110 words at most. No headings.`, content, 450)
+  return `Estimate from phone video and pose tracking.\n\n${text}`
+}

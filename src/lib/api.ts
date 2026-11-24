@@ -54,7 +54,10 @@ export const api = {
   saveCourse: (c: Pick<Course, 'name' | 'city' | 'state' | 'holes' | 'tees'> & { id?: string }) =>
     c.id ? req<void>(`/courses/${c.id}`, json('PUT', c)).then(() => c.id!) : req<{ id: string }>('/courses', json('POST', c)).then((r) => r.id),
   putScorecard: (id: string, tee: string, jpg: Blob) => req<void>(`/courses/${id}/scorecard?tee=${encodeURIComponent(tee)}`, { method: 'PUT', headers: { 'content-type': 'image/jpeg' }, body: jpg }),
-  readScorecard: (id: string, tee: string) => req<unknown>(`/courses/${id}/scorecard/read?tee=${encodeURIComponent(tee)}`, json('POST', {})),
+  readScorecard: (id: string, tee: string) => req<{ rows: { hole: number; par?: number; hcp?: number; yds?: number }[] }>(`/courses/${id}/scorecard/read?tee=${encodeURIComponent(tee)}`, json('POST', {})),
+  roundWriteup: (facts: string) => req<{ text: string }>('/ai/round-writeup', json('POST', { facts })),
+  suggestions: (facts: string, deep = false) => req<{ text: string }>('/ai/suggestions', json('POST', { facts, deep })),
+  coachSwing: (id: string) => req<{ feedback: string }>(`/swings/${id}/analyze`, json('POST', {})),
   deleteCourse: (id: string) => req<void>(`/courses/${id}`, { method: 'DELETE' }),
   usage: () => req<Usage>('/usage'),
   setRetention: (days: number) => req<void>('/settings/retention', json('PUT', { days })),
