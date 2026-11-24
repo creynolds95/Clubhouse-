@@ -1,5 +1,8 @@
 import { FilesetResolver, PoseLandmarker, type NormalizedLandmark } from '@mediapipe/tasks-vision'
 import { POSE_POINTS, type SwingMetrics, type SwingPhase } from '../../shared/types'
+import { findPhases } from './phases'
+export { findPhases }
+type Sample = { t: number; lm: NormalizedLandmark[] | null }
 
 // Served from our own origin (scripts/copy-wasm.mjs, public/mediapipe): no CDN dependency, cached after first use.
 const WASM = '/mediapipe/wasm'
@@ -15,7 +18,11 @@ const withTimeout = <T,>(p: Promise<T>, ms: number, msg: string) =>
     p.then((v) => { clearTimeout(t); res(v) }, (e) => { clearTimeout(t); rej(e) })
   })
 
+// MediaPipe needs strictly increasing timestamps across the whole life of a landmarker, not just within one clip.
+let clock = 0
+const nextTs = () => (clock += 40)
 let landmarker: Promise<PoseLandmarker> | null = null
+async function resetLandmarker() { const l = landmarker; landmarker = null; clock = 0; try { (await l)?.close() } catch { /* already gone */ } }
 function getLandmarker() {
   if (!landmarker) {
     const make = async () => {
@@ -30,7 +37,6 @@ function getLandmarker() {
   return landmarker
 }
 
-type Sample = { t: number; lm: NormalizedLandmark[] | null }
 
 const seek = (v: HTMLVideoElement, t: number) =>
   new Promise<void>((res, rej) => {
@@ -66,7 +72,7 @@ export interface PoseResult {
  * Runs pose on-device, finds the six swing positions, measures angles and grabs a JPEG of each position.
  * Heuristics assume one golfer, roughly static camera, clip containing one full swing.
  */
-export async function analyzeSwingVideo(
+async function analyzeOnce(
   file: Blob,
   handedness: 'right' | 'left',
   onStage?: (text: string, progress: number) => void,
@@ -83,7 +89,7 @@ export async function analyzeSwingVideo(
     for (let i = 0; i < n; i++) {
       const t = (i / (n - 1)) * Math.max(0, dur - 0.01)
       await seek(v, t)
-      const r = pose.detectForVideo(v, Math.round(t * 1000) + 1)
+      const r = pose.detectForVideo(v, nextTs())
       samples.push({ t, lm: r.landmarks[0] ?? null })
       onStage?.(`Reading frame ${i + 1} of ${n}…`, (i + 1) / n)
     }
@@ -91,9 +97,29 @@ export async function analyzeSwingVideo(
   } finally { URL.revokeObjectURL(url) }
 }
 
+/** Reads a swing. If the pose engine trips (it sometimes does on a clip after another), it is rebuilt and the clip is retried once. */
+export async function analyzeSwingVideo(file: Blob, handedness: 'right' | 'left', onStage?: (text: string, progress: number) => void): Promise<PoseResult> {
+  try { return await analyzeOnce(file, handedness, onStage) }
+  catch (e) {
+    if (/timestamp|packet|graph|calculator|INVALID_ARGUMENT/i.test((e as Error).message)) {
+      onStage?.('Restarting the pose reader…', 0)
+      await resetLandmarker()
+      try { return await analyzeOnce(file, handedness, onStage) } catch (e2) { throw new Error(readable(e2)) }
+    }
+    throw new Error(readable(e))
+  }
+}
+/** A short message instead of a raw engine dump. */
+function readable(e: unknown): string {
+  const m = (e as Error)?.message ?? String(e)
+  if (/timestamp|packet|graph|calculator|INVALID_ARGUMENT|wasm|abort/i.test(m)) return "The pose reader hiccuped. Tap Read swing to try again."
+  return m.length > 140 ? `${m.slice(0, 140)}…` : m
+}
+
 async function finish(v: HTMLVideoElement, samples: Sample[], handedness: 'right' | 'left'): Promise<PoseResult> {
-  const phases = findPhases(samples)
+  const { phases, low } = findPhases(samples)
   const metrics = measure(samples, phases, handedness)
+  if (low) metrics.phaseLow = true
 
   const frames: Partial<Record<SwingPhase, Blob>> = {}
   for (const [phase, idx] of Object.entries(phases) as [SwingPhase, number][]) {
@@ -115,50 +141,6 @@ const mid = (a: NormalizedLandmark, b: NormalizedLandmark) => ({ x: (a.x + b.x) 
 const hands = (lm: NormalizedLandmark[]) => mid(lm[L.lWr], lm[L.rWr])
 const deg = (r: number) => (r * 180) / Math.PI
 const round = (n: number, d = 0) => Math.round(n * 10 ** d) / 10 ** d
-
-/** Index of each phase within samples. Exported for unit tests. */
-export function findPhases(samples: Sample[]): Partial<Record<SwingPhase, number>> {
-  const idx = samples.map((s, i) => (s.lm ? i : -1)).filter((i) => i >= 0)
-  if (idx.length < 8) throw new Error('No golfer found in this clip. Try a clip with your whole body in frame.')
-
-  // 3-frame moving average of the hands: pose jitter otherwise creates false speed peaks.
-  const raw = idx.map((i) => hands(samples[i].lm!))
-  const sm = raw.map((_, k) => {
-    const w = raw.slice(Math.max(0, k - 1), k + 2)
-    return { x: w.reduce((s, p) => s + p.x, 0) / w.length, y: w.reduce((s, p) => s + p.y, 0) / w.length }
-  })
-  const hy = new Map(idx.map((i, k) => [i, sm[k].y]))
-  const speed = new Map<number, number>()
-  for (let k = 1; k < idx.length; k++) {
-    const dt = samples[idx[k]].t - samples[idx[k - 1]].t || 1
-    speed.set(idx[k], Math.hypot(sm[k].x - sm[k - 1].x, sm[k].y - sm[k - 1].y) / dt)
-  }
-  // Downswing has the fastest hands in the clip.
-  const peak = idx.reduce((best, i) => ((speed.get(i) ?? 0) > (speed.get(best) ?? 0) ? i : best), idx[0])
-  // Top: highest hands (smallest y) before peak speed.
-  const before = idx.filter((i) => i < peak)
-  const top = before.length ? before.reduce((b, i) => (hy.get(i)! < hy.get(b)! ? i : b), before[0]) : idx[0]
-  // Address: last still moment before the hands start rising toward the top.
-  const still = 0.15 * (speed.get(peak) ?? 1)
-  let address = idx[0]
-  for (const i of idx) { if (i >= top) break; if ((speed.get(i) ?? 0) < still) address = i }
-  // Impact: hands back to (or below) address height after the top.
-  const addrY = hy.get(address)!
-  const after = idx.filter((i) => i > top)
-  const impact = after.find((i) => hy.get(i)! >= addrY - 0.02) ?? peak
-  // Finish: hands settle after impact.
-  const post = idx.filter((i) => i > impact)
-  const finish = post.find((i, k) => k > 3 && (speed.get(i) ?? 0) < still) ?? post[post.length - 1] ?? impact
-  const nearest = (target: number) => idx.reduce((b, i) => (Math.abs(i - target) < Math.abs(b - target) ? i : b), idx[0])
-  return {
-    address,
-    takeaway: nearest(address + (top - address) * 0.4),
-    top,
-    transition: nearest(top + (impact - top) * 0.5),
-    impact,
-    finish,
-  }
-}
 
 /**
  * Down-the-line metrics. From behind, the image plane is the golfer's forward/up plane, so forward lean and

@@ -28,6 +28,8 @@ export interface SwingMetrics {
 
   framesWithPose: number
   framesSampled: number
+  /** True when the six positions look unreliable (no clear swing, or positions bunched together). */
+  phaseLow?: boolean
 }
 
 /** MediaPipe landmark indices stored in `pose`, and the bones drawn between them (indices into this list). */

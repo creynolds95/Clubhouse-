@@ -133,19 +133,32 @@ async function claude(env: AiEnv, kind: AiKind, purpose: string, system: string,
   const gate = await aiAllowed(env, kind)
   if (!gate.ok) throw new CoachBlocked(gate.reason)
   const model = kind === 'deep' ? (env.AI_WEEKLY_MODEL ?? AI_RULES.deep.model) : (env.AI_PER_CLIP_MODEL ?? AI_RULES.routine.model)
-  let res: Response
-  try {
-    res = await call(env as { DB: D1Database }, { source: 'anthropic', purpose: `${kind}: ${purpose}`, timeoutMs: AI_RULES.timeoutMs }, 'https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model, max_tokens: maxTokens, system, messages: [{ role: 'user', content }] }),
-    })
-  } catch (e) { throw new CoachBlocked(`Couldn't reach the coach (${(e as Error).message}).`) }
-  const body = await res.json().catch(() => ({})) as { content?: { type: string; text?: string }[]; error?: { message?: string } }
-  if (!res.ok) throw new CoachBlocked(`The coach answered ${res.status}${body.error?.message ? `: ${body.error.message}` : ''}`)
-  const text = (body.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim()
-  if (!text) throw new CoachBlocked('The coach sent back nothing.')
-  return text
+  const logPurpose = `${kind}: ${purpose}`
+  // A failed or empty reply is relabelled "void:" in the log so it does not use up the daily cap.
+  const voidLast = () => env.DB!.prepare("UPDATE api_log SET purpose = 'void: ' || purpose, note = COALESCE(note, 'did not count against the cap') WHERE id = (SELECT MAX(id) FROM api_log WHERE source = 'anthropic' AND purpose = ?)").bind(logPurpose).run().catch(() => {})
+  let thinkingOff = true, tokens = maxTokens, emptyTries = 0
+  for (;;) {
+    let res: Response
+    try {
+      res = await call(env as { DB: D1Database }, { source: 'anthropic', purpose: logPurpose, timeoutMs: AI_RULES.timeoutMs }, 'https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': env.ANTHROPIC_API_KEY!, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        // Thinking is switched off: it can eat the whole token budget and leave no text. These are short answers.
+        body: JSON.stringify({ model, max_tokens: tokens, system, messages: [{ role: 'user', content }], ...(thinkingOff ? { thinking: { type: 'disabled' } } : {}) }),
+      })
+    } catch (e) { await voidLast(); throw new CoachBlocked(`Couldn't reach the coach (${(e as Error).message}).`) }
+    const body = await res.json().catch(() => ({})) as { content?: { type: string; text?: string }[]; stop_reason?: string; error?: { message?: string } }
+    if (!res.ok) {
+      await voidLast()
+      if (res.status === 400 && thinkingOff && /thinking/i.test(body.error?.message ?? '')) { thinkingOff = false; continue }
+      throw new CoachBlocked(`The coach answered ${res.status}${body.error?.message ? `: ${body.error.message}` : ''}`)
+    }
+    const text = (body.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('').trim()
+    if (text) return text
+    await voidLast()
+    if (emptyTries++ === 0) { tokens = Math.min(tokens * 2, 4000); continue } // one retry with more room
+    throw new CoachBlocked(`The coach sent back nothing (${body.stop_reason ?? 'no reason given'}). Try again.`)
+  }
 }
 
 const STYLE = 'Write plainly for a golfer with a single-digit to mid-handicap game. No praise or filler. Short sentences. Practical, specific, and tied to the numbers given. Never invent numbers that are not in the data.'
