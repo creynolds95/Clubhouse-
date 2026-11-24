@@ -69,6 +69,11 @@ export default function Settings() {
         <div className="row"><div className="grow">Status</div><div className="val">{ai.data ? (ai.data.enabled ? 'On' : 'Off') : '—'}</div></div>
         <div className="row"><div className="grow">Everyday feedback<div className="cap">Swings, scorecard photos, round write-ups{ai.data?.dailyCap ? ` · up to ${ai.data.dailyCap.routine} a day` : ''}</div></div><div className="val">{ai.data?.perClipModel ?? '—'}</div></div>
         <div className="row"><div className="grow">Deeper review<div className="cap">Only when you ask{ai.data?.dailyCap ? ` · up to ${ai.data.dailyCap.deep} a day` : ''}</div></div><div className="val">{ai.data?.weeklyModel ?? '—'}</div></div>
+        <div style={{ padding: '4px 16px 14px' }}><button className="btn block" onClick={async () => {
+          floater.set({ text: 'Testing the key…', busy: true })
+          try { const r = await api.aiTest(); floater.set({ text: r.message, busy: false, error: !r.ok }); ai.reload() }
+          catch (e) { floater.set({ text: `Test failed. ${(e as Error).message}`, busy: false, error: true }) }
+        }}>Test the key</button></div>
       </div>
       <div className="card">
         <h2>Outside services</h2>

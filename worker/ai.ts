@@ -1,4 +1,5 @@
 import type { Profile, Swing } from '../shared/types'
+import { call } from './outbound'
 
 /**
  * Coach interface. OFF until the final "turn it on" step. Two switches, both required:
@@ -90,4 +91,27 @@ export function profilePrompt(p?: Profile | null): string {
   if (p.goals?.trim()) lines.push(`Goals: ${p.goals.trim()}.`)
   if (p.clubs?.length) lines.push(`Clubs in the bag: ${p.clubs.join(', ')}.`)
   return lines.length ? `About the player (use it to tailor tone and advice to their body):\n${lines.join('\n')}` : ''
+}
+
+/**
+ * One tiny Haiku call to prove the key works. Counts against the daily routine cap and shows in the call log.
+ * Works before the coach is switched on (it only needs the key), so the key can be checked first.
+ */
+export async function aiTest(env: AiEnv): Promise<{ ok: boolean; message: string }> {
+  if (!env.ANTHROPIC_API_KEY) return { ok: false, message: 'No key yet. Add ANTHROPIC_API_KEY as a Worker secret.' }
+  if (!env.DB) return { ok: false, message: 'No database.' }
+  const since = new Date().toISOString().slice(0, 10)
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM api_log WHERE source = 'anthropic' AND outcome IN ('ok', 'error') AND purpose LIKE 'routine:%' AND at >= ?").bind(since).first<{ n: number }>()
+  if ((row?.n ?? 0) >= AI_RULES.dailyCap.routine) return { ok: false, message: `Today's limit (${AI_RULES.dailyCap.routine}) is used.` }
+  const model = env.AI_PER_CLIP_MODEL ?? AI_RULES.routine.model
+  try {
+    const res = await call(env as { DB: D1Database }, { source: 'anthropic', purpose: 'routine: connection test', ignorePause: true, timeoutMs: 20_000 }, 'https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'x-api-key': env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      body: JSON.stringify({ model, max_tokens: 16, messages: [{ role: 'user', content: 'Reply with the single word: ready' }] }),
+    })
+    const body = await res.json().catch(() => ({})) as { content?: { text?: string }[]; error?: { message?: string } }
+    if (!res.ok) return { ok: false, message: `Anthropic answered ${res.status}: ${body.error?.message ?? 'no detail'}` }
+    return { ok: true, message: `Works. ${model} replied "${(body.content?.[0]?.text ?? '').trim().slice(0, 40)}".` }
+  } catch (e) { return { ok: false, message: `Couldn't reach Anthropic (${(e as Error).message}).` } }
 }

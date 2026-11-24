@@ -1,7 +1,7 @@
 import { Hono } from 'hono'
 import type { R10Shot, Round, Swing, SwingPhase } from '../shared/types'
 import { PHASES } from '../shared/types'
-import { aiStatus, getCoach, CoachOffError, type AiEnv } from './ai'
+import { aiStatus, aiTest, getCoach, CoachOffError, type AiEnv } from './ai'
 import { diagnose, findOnline, geocode, importCourse, near, sources, toCourse, type CourseEnv } from './courses'
 import type { Course, CourseCandidate, Profile } from '../shared/types'
 import { bumpRequests, purgeExpired, r2HasRoom, setRetentionDays, usageReport } from './maintenance'
@@ -343,6 +343,7 @@ app.put('/profile', async (c) => {
 
 // ---- Coach (off until the final step) ----
 app.get('/ai/status', (c) => c.json(aiStatus(c.env)))
+app.post('/ai/test', async (c) => c.json(await aiTest(c.env)))
 app.post('/swings/:id/analyze', (c) => {
   try { getCoach(c.env) } catch (e) { if (e instanceof CoachOffError) return c.json({ error: e.message }, 503); throw e }
   return c.json({ error: 'Not implemented' }, 501)
