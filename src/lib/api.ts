@@ -59,6 +59,7 @@ export const api = {
   usage: () => req<Usage>('/usage'),
   setRetention: (days: number) => req<void>('/settings/retention', json('PUT', { days })),
   purgeNow: () => req<{ videos: number; files: number; days: number }>('/maintenance/purge', { method: 'POST' }),
+  aiTest: () => req<{ ok: boolean; message: string }>('/ai/test', { method: 'POST' }),
   aiStatus: () => req<{ enabled: boolean; perClipModel: string; weeklyModel: string; dailyCap?: { routine: number; deep: number } }>('/ai/status'),
   log: (limit = 150) => req<LogReport>(`/log?limit=${limit}`),
   logClient: (b: { purpose: string; outcome: 'ok' | 'error'; status?: number; ms?: number; note?: string }) => req<void>('/log/client', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(b) }),
