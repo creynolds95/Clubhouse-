@@ -83,6 +83,7 @@ export default function SwingDetail() {
       {s.frames.length > 0 && (
         <div className="card" style={{ marginTop: 16 }}>
           <h2>Positions</h2>
+          {m?.phaseLow && <div className="note">These positions are a best guess. Use one full swing per clip, filmed from behind, with the whole body in frame.</div>}
           {m?.pose && (
             <div style={{ padding: '0 16px 8px' }}>
               <button className="chip" aria-pressed={tracking} onClick={() => setTracking((t) => !t)}>Show tracking</button>
@@ -95,7 +96,7 @@ export default function SwingDetail() {
                   <img src={frameSrc(s, p)} alt={p} loading="lazy" />
                   {tracking && m?.pose?.[p] && <Skeleton pts={m.pose[p]!} />}
                 </div>
-                <figcaption>{p}</figcaption>
+                <figcaption>{p}{m?.phaseTimes?.[p] != null ? ` · ${m.phaseTimes[p]!.toFixed(2)}s` : ''}</figcaption>
               </figure>
             ))}
           </div>
